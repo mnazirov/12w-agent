@@ -58,9 +58,9 @@ touch .env
 # Заполните:
 #   BOT_TOKEN=...       (от @BotFather)
 #   OPENAI_API_KEY=...  (ключ OpenAI)
-#   POSTGRES_USER=12w
-#   POSTGRES_PASSWORD=12w
-#   DATABASE_URL=postgresql://12w:12w@postgres:5432/12w
+#   POSTGRES_USER=...
+#   POSTGRES_PASSWORD=...
+#   DATABASE_URL=...
 ```
 
 ### 2. Docker (рекомендуется)
@@ -78,7 +78,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Запустите PostgreSQL и задайте DATABASE_URL в .env
-export DATABASE_URL=postgresql://12w:12w@localhost:5432/12w
+export DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@localhost:5432/12w
 
 # Применить миграции
 alembic upgrade head
@@ -139,8 +139,8 @@ pytest tests/ -v
 |-----------|-------------|----------|
 | `BOT_TOKEN` | — | Токен Telegram-бота |
 | `OPENAI_API_KEY` | — | Ключ OpenAI API |
-| `POSTGRES_USER` | 12w | Пользователь PostgreSQL (для docker-compose) |
-| `POSTGRES_PASSWORD` | 12w | Пароль PostgreSQL (для docker-compose) |
+| `POSTGRES_USER` | - | Пользователь PostgreSQL (для docker-compose) |
+| `POSTGRES_PASSWORD` | - | Пароль PostgreSQL (для docker-compose) |
 | `DATABASE_URL` | — | URL PostgreSQL |
 | `OPENAI_MODEL` | gpt-5.2 | Модель OpenAI |
 | `OPENAI_MAX_TOKENS` | 1024 | Макс. токенов в ответе |
