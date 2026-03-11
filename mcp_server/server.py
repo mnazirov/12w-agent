@@ -8,9 +8,14 @@ from datetime import datetime, timedelta
 
 from mcp.server.fastmcp import FastMCP
 
+MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
+MCP_PORT = int(os.getenv("MCP_PORT", "8001"))
+
 mcp = FastMCP(
     "12w-motivation-tracker",
     instructions="Track activity, evaluate engagement, and prepare motivation context.",
+    host=MCP_HOST,
+    port=MCP_PORT,
 )
 
 DB_PATH = os.getenv("MCP_DB_PATH", "/data/motivation.db")
