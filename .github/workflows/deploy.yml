@@ -1,0 +1,29 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT != '' && secrets.VPS_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -Eeuo pipefail
+            APP_DIR="${{ secrets.VPS_APP_DIR != '' && secrets.VPS_APP_DIR || '/opt/12w-agent' }}"
+            /bin/bash "${APP_DIR}/scripts/deploy.sh" main

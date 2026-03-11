@@ -78,7 +78,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Запустите PostgreSQL и задайте DATABASE_URL в .env
-export DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@localhost:5432/12w
+export DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/12w
 
 # Применить миграции
 alembic upgrade head
@@ -94,6 +94,23 @@ git pull
 docker compose build --no-cache bot
 docker compose up -d
 ```
+
+Или через скрипт из репозитория:
+
+```bash
+APP_DIR=/opt/12w-agent ./scripts/deploy.sh main
+```
+
+### 5. Автодеплой из GitHub (push -> VPS)
+
+В репозитории есть workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), который срабатывает на `push` в `main` и деплоит проект на сервер по SSH.
+
+Добавьте Secrets в GitHub (`Settings -> Secrets and variables -> Actions`):
+- `VPS_HOST` — IP/домен сервера
+- `VPS_USER` — SSH-пользователь на VPS
+- `VPS_SSH_KEY` — приватный ключ (рекомендуется отдельный deploy key)
+- `VPS_PORT` — опционально, по умолчанию `22`
+- `VPS_APP_DIR` — опционально, по умолчанию `/opt/12w-agent`
 
 ## Команды бота
 
@@ -139,8 +156,8 @@ pytest tests/ -v
 |-----------|-------------|----------|
 | `BOT_TOKEN` | — | Токен Telegram-бота |
 | `OPENAI_API_KEY` | — | Ключ OpenAI API |
-| `POSTGRES_USER` | - | Пользователь PostgreSQL (для docker-compose) |
-| `POSTGRES_PASSWORD` | - | Пароль PostgreSQL (для docker-compose) |
+| `POSTGRES_USER` | 12w | Пользователь PostgreSQL (для docker-compose) |
+| `POSTGRES_PASSWORD` | 12w | Пароль PostgreSQL (для docker-compose) |
 | `DATABASE_URL` | — | URL PostgreSQL |
 | `OPENAI_MODEL` | gpt-5.2 | Модель OpenAI |
 | `OPENAI_MAX_TOKENS` | 1024 | Макс. токенов в ответе |
