@@ -25,5 +25,9 @@ jobs:
           script_stop: true
           script: |
             set -Eeuo pipefail
-            APP_DIR="${{ secrets.VPS_APP_DIR != '' && secrets.VPS_APP_DIR || '/opt/12w-agent' }}"
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            if [ -z "${APP_DIR}" ]; then
+              APP_DIR="/opt/12w-agent"
+            fi
+            export APP_DIR
             /bin/bash "${APP_DIR}/scripts/deploy.sh" main
