@@ -33,6 +33,9 @@ TIMEZONE: str = os.environ.get("TZ", "Europe/Moscow")
 MEMORY_CONTEXT_MAX_TOKENS: int = int(os.environ.get("MEMORY_CONTEXT_MAX_TOKENS", "500"))
 MAX_HISTORY_DAYS: int = int(os.environ.get("MAX_HISTORY_DAYS", "14"))
 
+# --- MCP motivation server ---
+MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "http://mcp-server:8001/sse")
+
 # --- 12-Week Year defaults ---
 TWELVE_WEEKS: int = 12
 TOP_N_TASKS: int = 3

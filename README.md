@@ -7,6 +7,7 @@ Telegram-бот — персональный коуч по методике «12
 - **Python 3.12**, aiogram 3 (FSM + inline keyboards)
 - **OpenAI API** (Responses API, `gpt-5.2` по умолчанию)
 - **PostgreSQL 16** + SQLAlchemy async + Alembic
+- **MCP server** (`mcp>=1.0.0`) + SQLite для мотивационного трекинга
 - **Docker Compose** для деплоя на VPS
 - **APScheduler** для утренних/вечерних напоминаний
 - **Pydantic** для валидации AI-ответов
@@ -18,7 +19,7 @@ Telegram-бот — персональный коуч по методике «12
 ├── app/
 │   ├── bot.py              # Сборка Dispatcher + роутеры
 │   ├── config.py            # Конфигурация из .env
-│   ├── scheduler.py         # Напоминания (cron)
+│   ├── scheduler.py         # Напоминания + мотивационные рассылки (interval)
 │   ├── states.py            # FSM StatesGroup
 │   ├── keyboards.py         # Inline-клавиатуры
 │   ├── handlers/            # Обработчики команд
@@ -28,14 +29,22 @@ Telegram-бот — персональный коуч по методике «12
 │   │   ├── checkin.py       # /checkin (вечерний чек-ин + WOOP)
 │   │   ├── weekly_review.py # /weekly_review (недельный обзор)
 │   │   ├── status.py        # /status (прогресс)
+│   │   ├── motivation.py    # /motivation + /achievements
 │   │   └── chat.py          # Свободный AI-чат
+│   ├── middleware/
+│   │   └── activity_tracker.py  # Трекинг действий в MCP
 │   ├── services/
 │   │   ├── openai_service.py    # OpenAI обёртка + JSON валидация
 │   │   ├── planning_service.py  # Генерация дневного плана
 │   │   ├── checkin_service.py   # Анализ чек-ина + WOOP
 │   │   ├── review_service.py    # Недельный scoring + рефлексия
-│   │   └── memory_service.py    # Суммаризация и контекст
+│   │   ├── memory_service.py    # Суммаризация и контекст
+│   │   └── mcp_client.py        # Клиент MCP motivation server
 │   └── prompts/             # Шаблоны промптов (.md)
+│       └── motivation.md    # Шаблон мотивационного промпта
+├── mcp_server/
+│   ├── server.py            # Standalone MCP SSE server
+│   └── run.py               # Entry point MCP-сервера
 ├── db/
 │   ├── base.py              # AsyncEngine + sessionmaker
 │   ├── models.py            # SQLAlchemy ORM (8 таблиц)
@@ -46,6 +55,7 @@ Telegram-бот — персональный коуч по методике «12
 ├── alembic.ini
 ├── docker-compose.yml
 ├── Dockerfile
+├── Dockerfile.mcp
 └── requirements.txt
 ```
 
@@ -61,6 +71,7 @@ touch .env
 #   POSTGRES_USER=...
 #   POSTGRES_PASSWORD=...
 #   DATABASE_URL=...
+#   MCP_SERVER_URL=...  (опционально, по умолчанию http://mcp-server:8001/sse)
 ```
 
 ### 2. Docker (рекомендуется)
@@ -68,6 +79,7 @@ touch .env
 ```bash
 docker compose up -d
 # Миграции применяются автоматически при старте бота
+# Поднимутся сервисы: postgres, mcp-server, bot
 ```
 
 ### 3. Локальный запуск
@@ -83,6 +95,10 @@ export DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost
 # Применить миграции
 alembic upgrade head
 
+# Поднять MCP motivation server (отдельным процессом), если без docker-compose
+# Пример:
+# MCP_DB_PATH=/tmp/motivation.db MCP_PORT=8001 python mcp_server/run.py
+
 # Запуск
 python main.py
 ```
@@ -91,7 +107,7 @@ python main.py
 
 ```bash
 git pull
-docker compose build --no-cache bot
+docker compose build --no-cache
 docker compose up -d
 ```
 
@@ -122,7 +138,23 @@ APP_DIR=/opt/12w-agent ./scripts/deploy.sh main
 | `/checkin` | Вечерний чек-ин: отметить задачи → препятствия → WOOP → урок → уверенность |
 | `/weekly_review` | Недельный обзор: scoring + AI-рефлексия + корректировки |
 | `/status` | Прогресс: неделя X/12, % lead actions, streak, видение |
+| `/motivation` | Настройки мотивации: включение, интервал, стиль |
+| `/achievements` | Сводка активности за 7 дней: серия, стабильность, тренд |
 | Свободный текст | AI-чат с контекстом целей |
+
+## MCP Motivation Tracker
+
+Добавлен отдельный MCP-сервер, который отвечает за:
+- логирование пользовательской активности (`activity_log`);
+- персональные настройки мотивации (`motivation_config`);
+- историю отправленных мотивационных сообщений (`motivation_history`);
+- генерацию контекста для AI-мотивации на основе вовлечённости и достижений.
+
+Как это работает:
+- middleware трекает команды/сообщения/callback и отправляет события в MCP;
+- APScheduler каждые 15 минут проверяет, кому нужна мотивация;
+- бот генерирует короткое сообщение через OpenAI и отправляет в Telegram;
+- факт отправки записывается в MCP для контроля интервала.
 
 ## Поведенческие методики
 
@@ -169,3 +201,4 @@ pytest tests/ -v
 | `REMINDER_RESULTS_MINUTE` | 0 | Минуты вечернего напоминания |
 | `MEMORY_CONTEXT_MAX_TOKENS` | 500 | Бюджет токенов для контекста памяти |
 | `MAX_HISTORY_DAYS` | 14 | Дней истории для контекста |
+| `MCP_SERVER_URL` | `http://mcp-server:8001/sse` | URL MCP motivation server (SSE) |

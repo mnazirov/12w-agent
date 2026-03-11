@@ -13,15 +13,37 @@ services:
       timeout: 5s
       retries: 5
 
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    restart: unless-stopped
+    volumes:
+      - mcp-data:/data
+    environment:
+      - MCP_DB_PATH=/data/motivation.db
+      - MCP_PORT=8001
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/sse')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   bot:
     build: .
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://12w:12w@postgres:5432/12w}
+      MCP_SERVER_URL: http://mcp-server:8001/sse
     depends_on:
+      mcp-server:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  mcp-data:
