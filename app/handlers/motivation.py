@@ -6,7 +6,9 @@ import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.services.mcp_client import MCPMotivationClient
@@ -36,10 +38,31 @@ _TREND_EMOJI = {
 }
 
 
+class MotivationSettings(StatesGroup):
+    """FSM states for motivation settings."""
+
+    waiting_for_interval = State()
+
+
+def _format_interval(minutes: float) -> str:
+    """Форматирует интервал в человекочитаемый вид."""
+    if minutes >= 60:
+        h = minutes / 60
+        if h == int(h):
+            return f"{int(h)}ч"
+        whole_h = int(h)
+        remaining_m = int(round(minutes - whole_h * 60))
+        if remaining_m == 0:
+            return f"{whole_h}ч"
+        return f"{whole_h}ч {remaining_m}мин"
+    m = int(minutes) if minutes == int(minutes) else minutes
+    return f"{m}мин"
+
+
 def _build_settings_text(cfg: dict) -> str:
     """Build HTML text for motivation settings card."""
     enabled = bool(cfg.get("enabled", 1))
-    interval = cfg.get("interval_hours", 8)
+    interval = float(cfg.get("interval_hours", 8))
     style_key = str(cfg.get("style", "balanced"))
     style_label = _STYLES.get(style_key, style_key)
     quiet_start = int(cfg.get("quiet_start", 23))
@@ -49,7 +72,7 @@ def _build_settings_text(cfg: dict) -> str:
     return (
         "🔔 <b>Настройки мотивации</b>\n\n"
         f"Статус: {status}\n"
-        f"⏰ Интервал: каждые {interval:g}ч\n"
+        f"⏰ Интервал: каждые <b>{_format_interval(interval * 60)}</b>\n"
         f"🎨 Стиль: {style_label}\n"
         f"🌙 Тихие часы: {quiet_start:02d}:00 — {quiet_end:02d}:00"
     )
@@ -72,11 +95,13 @@ def _build_settings_kb(cfg: dict) -> InlineKeyboardBuilder:
         mark = "✅ " if abs(current_interval - float(hours)) < 0.001 else ""
         kb.button(text=f"{mark}{hours}ч", callback_data=f"motiv:int:{hours}")
 
+    kb.row(InlineKeyboardButton(text="✏️ Ввести в минутах", callback_data="motiv:int:custom"))
+
     for key, label in _STYLES.items():
         mark = "✅ " if current_style == key else ""
         kb.button(text=f"{mark}{label}", callback_data=f"motiv:style:{key}")
 
-    kb.adjust(1, len(_INTERVALS), len(_STYLES))
+    kb.adjust(1, len(_INTERVALS), 1, len(_STYLES))
     return kb
 
 
@@ -99,7 +124,11 @@ async def cmd_motivation(message: Message, mcp_client: MCPMotivationClient) -> N
 
 
 @router.callback_query(F.data.startswith("motiv:"))
-async def cb_motivation(callback: CallbackQuery, mcp_client: MCPMotivationClient) -> None:
+async def cb_motivation(
+    callback: CallbackQuery,
+    mcp_client: MCPMotivationClient,
+    state: FSMContext,
+) -> None:
     """Handle motivation settings updates from inline buttons."""
     if not callback.from_user:
         await callback.answer()
@@ -117,6 +146,18 @@ async def cb_motivation(callback: CallbackQuery, mcp_client: MCPMotivationClient
         if kind == "toggle":
             await mcp_client.update_motivation_config(uid, enabled=(val == "1"))
         elif kind == "int":
+            if val == "custom":
+                await state.set_state(MotivationSettings.waiting_for_interval)
+                if callback.message:
+                    await callback.message.edit_text(
+                        "⏰ <b>Введите интервал в минутах</b>\n\n"
+                        "Отправьте число от 1 до 2880 (48 часов).\n"
+                        "Например: <code>30</code>, <code>90</code>, <code>360</code>\n\n"
+                        "Для отмены отправьте /motivation",
+                        parse_mode="HTML",
+                    )
+                await callback.answer()
+                return
             await mcp_client.update_motivation_config(uid, interval_hours=float(val))
         elif kind == "style":
             await mcp_client.update_motivation_config(uid, style=val)
@@ -135,6 +176,60 @@ async def cb_motivation(callback: CallbackQuery, mcp_client: MCPMotivationClient
             parse_mode="HTML",
         )
     await callback.answer("✅ Сохранено")
+
+
+@router.message(MotivationSettings.waiting_for_interval)
+async def process_custom_interval(message: Message, mcp_client: MCPMotivationClient, state: FSMContext):
+    """Обработка ручного ввода интервала мотивации в минутах."""
+    text = (message.text or "").strip().replace(",", ".")
+
+    # Проверка команды отмены
+    if text.startswith("/"):
+        await state.clear()
+        return
+
+    # Валидация
+    try:
+        minutes = float(text)
+    except ValueError:
+        await message.answer(
+            "❌ Не удалось распознать число.\n"
+            "Отправьте количество минут от 1 до 2880, например: <code>30</code> или <code>90</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if minutes < 1 or minutes > 2880:
+        await message.answer(
+            "❌ Интервал должен быть от <b>1</b> до <b>2880</b> минут (48 часов).\n"
+            "Попробуйте ещё раз:",
+            parse_mode="HTML",
+        )
+        return
+
+    # Конвертация в часы для MCP
+    hours = round(minutes / 60, 4)
+
+    # Сохраняем
+    uid = message.from_user.id
+    await mcp_client.update_motivation_config(uid, interval_hours=hours)
+    await state.clear()
+
+    # Показываем обновлённые настройки
+    cfg = await mcp_client.get_motivation_config(uid)
+    if "error" in cfg:
+        await message.answer("✅ Интервал сохранён, но не удалось загрузить настройки.")
+        return
+
+    # Человекочитаемый формат
+    display = _format_interval(minutes)
+
+    kb = _build_settings_kb(cfg)
+    await message.answer(
+        f"✅ Интервал установлен: <b>{display}</b>\n\n" + _build_settings_text(cfg),
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("achievements"))
