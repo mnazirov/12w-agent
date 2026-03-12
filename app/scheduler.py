@@ -151,47 +151,52 @@ def shutdown_scheduler(scheduler: AsyncIOScheduler) -> None:
 
 
 def _build_motivation_user_prompt(ctx: dict) -> str:
-    """Build user prompt for motivation generation from MCP context."""
-    engagement = (ctx.get("engagement") or {}) if isinstance(ctx, dict) else {}
-    achievements = (ctx.get("achievements") or {}) if isinstance(ctx, dict) else {}
+    """Build user prompt with precise today's plan/checkin status."""
+    eng = ctx.get("engagement", {})
+    ach = ctx.get("achievements", {})
+    today = ctx.get("today_actions", {})
 
-    level = engagement.get("engagement_level", "unknown")
-    hours = engagement.get("hours_inactive")
-    streak = achievements.get("current_streak", 0)
-    consistency = achievements.get("consistency", 0)
-    trend = achievements.get("trend", "stable")
-    week_activities = achievements.get("total_activities", 0)
-    breakdown = achievements.get("breakdown", {})
+    # --- Precise today data from MCP ---
+    today_bd = today.get("today_breakdown", {})
+    days_since = today.get("days_since", {})
 
-    msg_type = ctx.get("recommended_type", "support")
-    tone = ctx.get("recommended_tone", "encouraging")
-    style = ctx.get("style", engagement.get("style", "balanced"))
+    plan_today = "yes" if today_bd.get("plan", 0) > 0 else "no"
+    checkin_today = "yes" if today_bd.get("checkin", 0) > 0 else "no"
 
-    try:
-        consistency_pct = int(round(float(consistency) * 100))
-    except (TypeError, ValueError):
-        consistency_pct = 0
-    inactive_hours = "n/a" if hours is None else str(hours)
+    # days_since: int (0 = today) or None (never done)
+    ds_plan = days_since.get("plan")
+    ds_checkin = days_since.get("checkin")
 
-    lines = [
-        f"Engagement: {level}, inactive {inactive_hours}h",
-        f"Streak: {streak}d, consistency: {consistency_pct}%, trend: {trend}",
-        f"Week activities: {week_activities}, breakdown: {breakdown}",
-        f"Message type: {msg_type}, tone: {tone}, style: {style}",
+    # Format for prompt: None → "never"
+    days_without_plan = str(ds_plan) if ds_plan is not None else "never"
+    days_without_checkin = str(ds_checkin) if ds_checkin is not None else "never"
+
+    # --- Build prompt lines ---
+    parts = [
+        f"plan_today: {plan_today}",
+        f"checkin_today: {checkin_today}",
+        f"days_without_plan: {days_without_plan}",
+        f"days_without_checkin: {days_without_checkin}",
+        f"streak: {ach.get('current_streak', 0)} days",
+        f"consistency: {ach.get('consistency', 0):.0%}",
+        f"trend: {ach.get('trend', '?')}",
+        f"engagement: {eng.get('engagement_level', '?')}",
+        "",
+        f"Today's actions: {today_bd if today_bd else 'none'}",
+        f"Week plans: {ach.get('breakdown', {}).get('plan', 0)}, "
+        f"checkins: {ach.get('breakdown', {}).get('checkin', 0)}, "
+        f"reviews: {ach.get('breakdown', {}).get('review', 0)}",
+        f"Style: {ctx.get('style', 'balanced')}",
     ]
 
     recent = ctx.get("recent_motivations", [])
-    if isinstance(recent, list):
-        messages: list[str] = []
-        for item in recent[:3]:
-            if isinstance(item, dict):
-                text = str(item.get("message", "")).replace("\n", " ").strip()
-                if text:
-                    messages.append(text[:60])
-        if messages:
-            lines.append(f"Recent motivations (don't repeat): {' | '.join(messages)}")
+    if recent:
+        parts.append(
+            "\nRecent motivations (do NOT repeat):\n"
+            + "\n".join(f"- {m.get('message', '')[:100]}" for m in recent[:3])
+        )
 
-    return "\n".join(lines)
+    return "\n".join(parts)
 
 
 async def check_and_send_motivation(

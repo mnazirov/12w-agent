@@ -299,6 +299,59 @@ def get_achievement_report(user_id: int, days: int = 7) -> str:
 
 
 @mcp.tool()
+def get_today_actions(user_id: int) -> str:
+    """Return today's action breakdown and days since last key action.
+
+    Provides precise per-day data: what the user did today and when
+    they last performed each key action (plan, checkin, review, setup).
+
+    Args:
+        user_id: Telegram user ID.
+    """
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    now = datetime.utcnow()
+
+    with get_db() as conn:
+        # Actions performed TODAY, grouped by type
+        rows = conn.execute(
+            "SELECT action, COUNT(*) AS cnt "
+            "FROM activity_log "
+            "WHERE user_id = ? AND date(created_at) = ? "
+            "GROUP BY action",
+            (user_id, today),
+        ).fetchall()
+        today_breakdown = {r["action"]: r["cnt"] for r in rows}
+
+        # Last date of each key action (all-time, not just this week)
+        last_dates = {}
+        days_since = {}
+        for action in ("plan", "checkin", "review", "setup"):
+            row = conn.execute(
+                "SELECT created_at FROM activity_log "
+                "WHERE user_id = ? AND action = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (user_id, action),
+            ).fetchone()
+            if row:
+                last_dates[action] = row["created_at"]
+                dt = datetime.fromisoformat(row["created_at"])
+                days_since[action] = (now - dt).days
+            else:
+                last_dates[action] = None
+                days_since[action] = None
+
+    return json.dumps(
+        {
+            "user_id": user_id,
+            "date": today,
+            "today_breakdown": today_breakdown,
+            "last_dates": last_dates,
+            "days_since": days_since,
+        }
+    )
+
+
+@mcp.tool()
 def check_engagement(user_id: int) -> str:
     """Evaluate current user engagement and motivation trigger status.
 
@@ -400,6 +453,7 @@ def generate_motivation_context(user_id: int) -> str:
     """
     engagement = json.loads(check_engagement(user_id))
     achievements = json.loads(get_achievement_report(user_id, days=7))
+    today_data = json.loads(get_today_actions(user_id))
 
     with get_db() as conn:
         rows = conn.execute(
@@ -426,17 +480,17 @@ def generate_motivation_context(user_id: int) -> str:
     level = engagement.get("engagement_level", "new_user")
     recommended_type, recommended_tone = mapping.get(level, ("support", "encouraging"))
 
-    return json.dumps(
-        {
-            "user_id": user_id,
-            "engagement": engagement,
-            "achievements": achievements,
-            "recent_motivations": recent_motivations,
-            "recommended_type": recommended_type,
-            "recommended_tone": recommended_tone,
-            "style": engagement.get("style", "balanced"),
-        }
-    )
+    ctx = {
+        "user_id": user_id,
+        "engagement": engagement,
+        "achievements": achievements,
+        "today_actions": today_data,
+        "recent_motivations": recent_motivations,
+        "recommended_type": recommended_type,
+        "recommended_tone": recommended_tone,
+        "style": engagement.get("style", "balanced"),
+    }
+    return json.dumps(ctx)
 
 
 @mcp.tool()

@@ -61,6 +61,9 @@ class MCPMotivationClient:
             {"user_id": user_id, "days": days},
         )
 
+    async def get_today_actions(self, user_id: int) -> dict:
+        return await self._call("get_today_actions", {"user_id": user_id})
+
     async def check_engagement(self, user_id: int) -> dict:
         return await self._call("check_engagement", {"user_id": user_id})
 
