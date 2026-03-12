@@ -465,7 +465,7 @@ def update_motivation_config(
     Args:
         user_id: Telegram user id.
         enabled: Enable or disable automatic motivation.
-        interval_hours: Interval between messages in hours.
+        interval_hours: Interval between messages in hours (fractional values are allowed).
         style: One of gentle, balanced, intense.
         quiet_start: Quiet-hours start (0-23, UTC).
         quiet_end: Quiet-hours end (0-23, UTC).
@@ -481,7 +481,7 @@ def update_motivation_config(
             values.append(1 if enabled else 0)
 
         if interval_hours is not None:
-            iv = max(1.0, min(48.0, float(interval_hours)))
+            iv = max((1.0 / 60.0), min(48.0, float(interval_hours)))
             fields.append("interval_hours = ?")
             values.append(iv)
 

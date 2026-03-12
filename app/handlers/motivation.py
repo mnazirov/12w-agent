@@ -46,17 +46,24 @@ class MotivationSettings(StatesGroup):
 
 def _format_interval(minutes: float) -> str:
     """Форматирует интервал в человекочитаемый вид."""
-    if minutes >= 60:
-        h = minutes / 60
-        if h == int(h):
-            return f"{int(h)}ч"
+    value = float(minutes)
+
+    if value >= 60:
+        h = value / 60
+        if abs(h - round(h)) < 1e-6:
+            return f"{int(round(h))}ч"
         whole_h = int(h)
-        remaining_m = int(round(minutes - whole_h * 60))
+        remaining_m = int(round(value - whole_h * 60))
+        if remaining_m == 60:
+            whole_h += 1
+            remaining_m = 0
         if remaining_m == 0:
             return f"{whole_h}ч"
         return f"{whole_h}ч {remaining_m}мин"
-    m = int(minutes) if minutes == int(minutes) else minutes
-    return f"{m}мин"
+
+    if abs(value - round(value)) < 1e-6:
+        return f"{int(round(value))}мин"
+    return f"{value:.2f}".rstrip("0").rstrip(".") + "мин"
 
 
 def _build_settings_text(cfg: dict) -> str:
@@ -208,7 +215,7 @@ async def process_custom_interval(message: Message, mcp_client: MCPMotivationCli
         return
 
     # Конвертация в часы для MCP
-    hours = round(minutes / 60, 4)
+    hours = minutes / 60.0
 
     # Сохраняем
     uid = message.from_user.id

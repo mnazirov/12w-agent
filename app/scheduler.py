@@ -273,7 +273,7 @@ def register_motivation_job(
     scheduler.add_job(
         check_and_send_motivation,
         "interval",
-        minutes=15,
+        minutes=1,
         kwargs={
             "bot": bot,
             "mcp_client": mcp_client,
