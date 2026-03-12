@@ -11,7 +11,12 @@ from app.config import BOT_TOKEN, MCP_SERVER_URL, OPENAI_MODEL
 from app.handlers import get_all_routers
 from app.handlers.motivation import router as motivation_router
 from app.middleware.activity_tracker import ActivityTrackerMiddleware
-from app.scheduler import register_motivation_job, setup_scheduler, shutdown_scheduler
+from app.scheduler import (
+    register_motivation_job,
+    register_weekly_report_job,
+    setup_scheduler,
+    shutdown_scheduler,
+)
 from app.services.mcp_client import MCPMotivationClient
 from app.services.openai_service import get_client
 from db.base import close_engine, get_engine, get_session_factory
@@ -56,6 +61,7 @@ async def _set_bot_commands(bot: Bot) -> None:
             BotCommand(command="checkin", description="✅ Вечерний чек-ин"),
             BotCommand(command="weekly_review", description="📋 Недельный обзор"),
             BotCommand(command="status", description="📈 Статус и прогресс"),
+            BotCommand(command="report", description="📊 Аналитический отчёт за неделю"),
             BotCommand(command="motivation", description="⚙️ Настройки мотивации"),
             BotCommand(command="achievements", description="📊 Сводка достижений"),
         ]
@@ -89,6 +95,8 @@ async def run_bot() -> None:
     dp.message.middleware(ActivityTrackerMiddleware(mcp_client))
     dp.callback_query.middleware(ActivityTrackerMiddleware(mcp_client))
     dp.workflow_data["mcp_client"] = mcp_client
+    dp.workflow_data["openai_service"] = openai_service
+    dp.workflow_data["user_repo"] = user_repo
 
     # Register routers
     dp.include_router(motivation_router)
@@ -98,6 +106,13 @@ async def run_bot() -> None:
     # Setup scheduler (reminders)
     scheduler = setup_scheduler(bot)
     register_motivation_job(
+        scheduler=scheduler,
+        bot=bot,
+        mcp_client=mcp_client,
+        openai_service=openai_service,
+        user_repo=user_repo,
+    )
+    register_weekly_report_job(
         scheduler=scheduler,
         bot=bot,
         mcp_client=mcp_client,

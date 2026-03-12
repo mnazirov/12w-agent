@@ -103,3 +103,24 @@ class MCPMotivationClient:
             except (TypeError, ValueError):
                 continue
         return out
+
+    async def collect_week_data(self, user_id: int, days: int = 7) -> dict:
+        return await self._call(
+            "collect_week_data", {"user_id": user_id, "days": days}
+        )
+
+    async def analyze_patterns(self, raw_data_json: str) -> dict:
+        return await self._call(
+            "analyze_patterns", {"raw_data_json": raw_data_json}
+        )
+
+    async def save_weekly_report(self, user_id: int, report_json: str) -> dict:
+        return await self._call(
+            "save_weekly_report",
+            {"user_id": user_id, "report_json": report_json},
+        )
+
+    async def get_previous_reports(self, user_id: int, limit: int = 4) -> dict:
+        return await self._call(
+            "get_previous_reports", {"user_id": user_id, "limit": limit}
+        )

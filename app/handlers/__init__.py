@@ -7,6 +7,7 @@ from app.handlers.plan import router as plan_router
 from app.handlers.checkin import router as checkin_router
 from app.handlers.weekly_review import router as weekly_review_router
 from app.handlers.status import router as status_router
+from app.handlers.report import router as report_router
 from app.handlers.chat import router as chat_router
 
 
@@ -19,5 +20,6 @@ def get_all_routers() -> list[Router]:
         checkin_router,
         weekly_review_router,
         status_router,
+        report_router,
         chat_router,
     ]

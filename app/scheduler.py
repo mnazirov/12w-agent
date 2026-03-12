@@ -289,3 +289,103 @@ def register_motivation_job(
         replace_existing=True,
         misfire_grace_time=120,
     )
+
+
+async def weekly_auto_report(
+    bot: Bot,
+    mcp_client: MCPMotivationClient,
+    openai_service,
+    user_repo=None,
+):
+    """Scheduler job: автоматический еженедельный отчёт (воскресенье)."""
+    from app.services.pipeline_service import run_analytics_pipeline
+
+    logger.info("Weekly auto-report started")
+
+    try:
+        user_ids = await mcp_client.get_users_needing_motivation()
+    except Exception:
+        # Fallback: get all users with any activity
+        try:
+            data = await mcp_client._call("get_users_needing_motivation", {})
+            user_ids = data.get("users", [])
+        except Exception as exc:
+            logger.error("Cannot get user list for weekly report: %s", exc)
+            return
+
+    # Also include users who have motivation enabled but might not need motivation now
+    # For simplicity, run for all users who have any config
+    if not user_ids:
+        logger.info("No users for weekly report")
+        return
+
+    for uid in user_ids:
+        try:
+            vision = None
+            if user_repo:
+                try:
+                    v = await user_repo.get_vision(uid)
+                    if v:
+                        vision = getattr(v, "vision", None)
+                except Exception:
+                    pass
+
+            result = await run_analytics_pipeline(
+                mcp_client=mcp_client,
+                openai_service=openai_service,
+                user_id=uid,
+                days=7,
+                vision=vision,
+            )
+
+            if not result.get("success"):
+                continue
+
+            ai = result.get("ai_insights", "")
+            score = result.get("completion_score", 0)
+            score_bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
+
+            text = (
+                f"📊 <b>Еженедельная сводка</b>\n\n"
+                f"Выполнение: {score_bar} {score:.0%}\n"
+            )
+            if ai:
+                text += f"\n{ai}\n"
+            text += "\nПодробнее: /report"
+
+            try:
+                await bot.send_message(uid, text, parse_mode="HTML")
+            except Exception:
+                await bot.send_message(uid, text)
+
+            logger.info("Weekly report sent to user %s", uid)
+
+        except Exception as exc:
+            logger.error("Weekly report failed for user %s: %s", uid, exc)
+
+
+def register_weekly_report_job(
+    scheduler,
+    bot: Bot,
+    mcp_client: MCPMotivationClient,
+    openai_service,
+    user_repo=None,
+):
+    """Register weekly report cron job (Sunday 20:00)."""
+    scheduler.add_job(
+        weekly_auto_report,
+        "cron",
+        day_of_week="sun",
+        hour=20,
+        minute=0,
+        kwargs={
+            "bot": bot,
+            "mcp_client": mcp_client,
+            "openai_service": openai_service,
+            "user_repo": user_repo,
+        },
+        id="weekly_auto_report",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info("Weekly auto-report registered (Sunday 20:00)")

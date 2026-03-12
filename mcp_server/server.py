@@ -627,3 +627,275 @@ def get_users_needing_motivation() -> str:
             "checked_at": datetime.utcnow().isoformat(timespec="seconds"),
         }
     )
+
+
+@mcp.tool()
+def collect_week_data(user_id: int, days: int = 7) -> str:
+    """Collect raw activity data for pipeline processing.
+
+    Step 1 of the analytics pipeline.
+    Gathers all activity records grouped by day and type,
+    hourly distribution, and streak info.
+
+    Args:
+        user_id: Telegram user ID.
+        days:    Look-back window (default 7).
+    """
+    now = datetime.utcnow()
+    since = (now - timedelta(days=days)).isoformat()
+
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT action, details, created_at "
+            "FROM activity_log "
+            "WHERE user_id = ? AND created_at >= ? "
+            "ORDER BY created_at",
+            (user_id, since),
+        ).fetchall()
+
+        daily_breakdown = {}
+        hourly_counts = {}
+        for r in rows:
+            d = r["created_at"][:10]
+            action = r["action"]
+            daily_breakdown.setdefault(d, {})
+            daily_breakdown[d][action] = daily_breakdown[d].get(action, 0) + 1
+
+            hour_str = r["created_at"][11:13]
+            hourly_counts[hour_str] = hourly_counts.get(hour_str, 0) + 1
+
+        total_breakdown = {}
+        for r in rows:
+            total_breakdown[r["action"]] = total_breakdown.get(r["action"], 0) + 1
+
+        cur_streak, longest_streak = _calc_streak(conn, user_id)
+        cfg = _ensure_config(conn, user_id)
+
+    all_dates = [
+        (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        for i in range(days)
+    ]
+
+    return json.dumps(
+        {
+            "user_id": user_id,
+            "period_days": days,
+            "collected_at": now.isoformat(),
+            "total_records": len(rows),
+            "total_breakdown": total_breakdown,
+            "daily_breakdown": daily_breakdown,
+            "all_dates": all_dates,
+            "hourly_counts": hourly_counts,
+            "current_streak": cur_streak,
+            "longest_streak": longest_streak,
+            "style": cfg.get("style", "balanced"),
+        }
+    )
+
+
+@mcp.tool()
+def analyze_patterns(raw_data_json: str) -> str:
+    """Analyze activity patterns from collected data.
+
+    Step 2 of the analytics pipeline.
+    Takes JSON output from collect_week_data and produces metrics,
+    patterns, and recommendations.
+
+    Args:
+        raw_data_json: JSON string — output of collect_week_data.
+    """
+    data = json.loads(raw_data_json)
+    daily = data.get("daily_breakdown", {})
+    total = data.get("total_breakdown", {})
+    all_dates = data.get("all_dates", [])
+    hourly = data.get("hourly_counts", {})
+    period = data.get("period_days", 7)
+
+    real_actions = ("plan", "checkin", "review", "setup")
+    real_total = {k: total.get(k, 0) for k in real_actions}
+    real_sum = sum(real_total.values())
+
+    day_scores = {}
+    for d in all_dates:
+        actions = daily.get(d, {})
+        day_scores[d] = sum(actions.get(a, 0) for a in real_actions)
+
+    active_days = [d for d, s in day_scores.items() if s > 0]
+    missed_days = [d for d, s in day_scores.items() if s == 0]
+
+    best_day = max(day_scores, key=day_scores.get) if day_scores else None
+    best_day_score = day_scores.get(best_day, 0) if best_day else 0
+
+    active_scores = {d: s for d, s in day_scores.items() if s > 0}
+    worst_day = min(active_scores, key=active_scores.get) if active_scores else None
+
+    most_frequent = max(real_total, key=real_total.get) if real_sum > 0 else None
+    least_frequent = min(real_total, key=real_total.get) if real_sum > 0 else None
+
+    morning = sum(hourly.get(f"{h:02d}", 0) for h in range(6, 12))
+    afternoon = sum(hourly.get(f"{h:02d}", 0) for h in range(12, 18))
+    evening = sum(hourly.get(f"{h:02d}", 0) for h in range(18, 24))
+    night = sum(hourly.get(f"{h:02d}", 0) for h in range(0, 6))
+
+    time_blocks = {
+        "morning_6_12": morning,
+        "afternoon_12_18": afternoon,
+        "evening_18_24": evening,
+        "night_0_6": night,
+    }
+    total_time = sum(time_blocks.values())
+    peak_block = max(time_blocks, key=time_blocks.get) if total_time > 0 else None
+
+    ideal = period * 2
+    score_pct = round(real_sum / ideal, 2) if ideal > 0 else 0
+
+    # Consecutive missed days
+    max_consecutive = 0
+    consecutive = 0
+    for d in all_dates:
+        if d in missed_days:
+            consecutive += 1
+            max_consecutive = max(max_consecutive, consecutive)
+        else:
+            consecutive = 0
+
+    recommendations = []
+
+    if real_total.get("plan", 0) == 0:
+        recommendations.append("no_plans_at_all")
+    elif real_total.get("plan", 0) < period * 0.5:
+        recommendations.append("low_plan_frequency")
+
+    if real_total.get("checkin", 0) == 0:
+        recommendations.append("no_checkins_at_all")
+    elif real_total.get("plan", 0) > 0 and real_total.get("checkin", 0) < real_total.get("plan", 0) * 0.5:
+        recommendations.append("plans_without_checkins")
+
+    if len(missed_days) > period * 0.5:
+        recommendations.append("too_many_missed_days")
+
+    if max_consecutive >= 3:
+        recommendations.append("consecutive_missed_days")
+
+    if score_pct >= 0.7:
+        recommendations.append("strong_performance")
+    elif score_pct >= 0.4:
+        recommendations.append("moderate_performance")
+    else:
+        recommendations.append("needs_attention")
+
+    if peak_block:
+        recommendations.append(f"peak_time_{peak_block}")
+
+    return json.dumps(
+        {
+            "user_id": data.get("user_id"),
+            "period_days": period,
+            "real_actions_total": real_sum,
+            "real_actions_breakdown": real_total,
+            "active_days": len(active_days),
+            "missed_days": len(missed_days),
+            "missed_days_list": missed_days,
+            "max_consecutive_missed": max_consecutive,
+            "best_day": {"date": best_day, "score": best_day_score},
+            "worst_active_day": worst_day,
+            "most_frequent_action": most_frequent,
+            "least_frequent_action": least_frequent,
+            "time_distribution": time_blocks,
+            "peak_time_block": peak_block,
+            "completion_score": score_pct,
+            "current_streak": data.get("current_streak", 0),
+            "longest_streak": data.get("longest_streak", 0),
+            "recommendations": recommendations,
+            "analyzed_at": datetime.utcnow().isoformat(),
+        }
+    )
+
+
+@mcp.tool()
+def save_weekly_report(user_id: int, report_json: str) -> str:
+    """Save final report to achievement_snapshots.
+
+    Step 4 (final) of the analytics pipeline.
+    Persists the enriched report and returns it with snapshot ID.
+
+    Args:
+        user_id:     Telegram user ID.
+        report_json: JSON string — enriched analysis to save.
+    """
+    now = datetime.utcnow()
+    report = json.loads(report_json)
+    period = report.get("period_days", 7)
+    period_label = (
+        f"{(now - timedelta(days=period)).strftime('%Y-%m-%d')}"
+        f"_to_{now.strftime('%Y-%m-%d')}"
+    )
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO achievement_snapshots (user_id, period, data) "
+            "VALUES (?, ?, ?)",
+            (user_id, period_label, report_json),
+        )
+        snapshot_id = cursor.lastrowid
+
+        total_reports = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM achievement_snapshots WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["cnt"]
+
+    report["snapshot_id"] = snapshot_id
+    report["period_label"] = period_label
+    report["total_reports"] = total_reports
+    report["saved_at"] = now.isoformat()
+
+    return json.dumps(report)
+
+
+@mcp.tool()
+def get_previous_reports(user_id: int, limit: int = 4) -> str:
+    """Retrieve previous weekly reports for comparison.
+
+    Reads saved snapshots from achievement_snapshots, ordered by
+    most recent first.
+
+    Args:
+        user_id: Telegram user ID.
+        limit:   Max number of reports to return (default 4).
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, period, data, created_at "
+            "FROM achievement_snapshots "
+            "WHERE user_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (user_id, min(limit, 12)),
+        ).fetchall()
+
+    reports = []
+    for r in rows:
+        try:
+            parsed = json.loads(r["data"])
+        except (json.JSONDecodeError, TypeError):
+            parsed = {}
+        reports.append(
+            {
+                "snapshot_id": r["id"],
+                "period": r["period"],
+                "created_at": r["created_at"],
+                "completion_score": parsed.get("completion_score"),
+                "real_actions_total": parsed.get("real_actions_total"),
+                "active_days": parsed.get("active_days"),
+                "missed_days": parsed.get("missed_days"),
+                "current_streak": parsed.get("current_streak"),
+                "recommendations": parsed.get("recommendations", []),
+            }
+        )
+
+    return json.dumps(
+        {
+            "user_id": user_id,
+            "count": len(reports),
+            "reports": reports,
+        }
+    )
