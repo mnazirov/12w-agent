@@ -9,6 +9,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
+from app.services.message_cleanup import delete_last_bot_message
 from app.services.mcp_client import MCPMotivationClient
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ class ActivityTrackerMiddleware(BaseMiddleware):
             if text.startswith("/"):
                 command = text.split()[0].split("@")[0]
                 action = self._CMD_MAP.get(command, "command")
+                bot = data.get("bot")
+                if bot and event.chat:
+                    await delete_last_bot_message(bot, event.chat.id)
             else:
                 action = "chat"
             details = text[:150]

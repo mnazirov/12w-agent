@@ -38,6 +38,17 @@ def setup_confirm_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Сохранить", callback_data="setup_save"),
             InlineKeyboardButton(text="✏️ Изменить", callback_data="setup_edit"),
         ],
+        [
+            InlineKeyboardButton(text="❌ Отменить", callback_data="setup_cancel"),
+        ],
+    ])
+
+
+def setup_cancel_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="❌ Отменить настройку", callback_data="setup_cancel"),
+        ],
     ])
 
 

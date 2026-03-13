@@ -17,6 +17,7 @@ from app.scheduler import (
     setup_scheduler,
     shutdown_scheduler,
 )
+from app.services.message_cleanup import TrackingBot
 from app.services.mcp_client import MCPMotivationClient
 from app.services.openai_service import get_client
 from db.base import close_engine, get_engine, get_session_factory
@@ -81,7 +82,7 @@ async def run_bot() -> None:
     # Ensure the engine is created (validates DB connectivity)
     get_engine()
 
-    bot = Bot(token=BOT_TOKEN)
+    bot = TrackingBot(token=BOT_TOKEN)
     try:
         await _set_bot_commands(bot)
     except Exception as exc:

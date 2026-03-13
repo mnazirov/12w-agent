@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.keyboards import setup_confirm_kb, skip_kb
+from app.keyboards import setup_cancel_kb, setup_confirm_kb
 from app.states import SetupStates
 from db.base import get_session_factory
 from db.repos import (
@@ -56,6 +55,7 @@ async def cmd_setup(message: Message, state: FSMContext) -> None:
         "Как будет выглядеть твоя жизнь, когда цели достигнуты?\n\n"
         "_Пример: «Я запустил продукт, набрал первых 100 пользователей, "
         "чувствую уверенность и энергию»_",
+        reply_markup=setup_cancel_kb(),
         parse_mode="Markdown",
     )
 
@@ -66,7 +66,10 @@ async def cmd_setup(message: Message, state: FSMContext) -> None:
 async def on_vision(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Пожалуйста, опиши своё видение текстом.")
+        await message.answer(
+            "Пожалуйста, опиши своё видение текстом.",
+            reply_markup=setup_cancel_kb(),
+        )
         return
 
     await state.update_data(vision=text)
@@ -76,6 +79,7 @@ async def on_vision(message: Message, state: FSMContext) -> None:
         "Почему эти результаты важны для тебя?\n"
         "Что изменится в твоей жизни?\n\n"
         "_Чем глубже «почему», тем сильнее мотивация в трудные дни._",
+        reply_markup=setup_cancel_kb(),
         parse_mode="Markdown",
     )
 
@@ -86,7 +90,10 @@ async def on_vision(message: Message, state: FSMContext) -> None:
 async def on_why(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Пожалуйста, напиши, почему это важно.")
+        await message.answer(
+            "Пожалуйста, напиши, почему это важно.",
+            reply_markup=setup_cancel_kb(),
+        )
         return
 
     await state.update_data(why=text)
@@ -99,6 +106,7 @@ async def on_why(message: Message, state: FSMContext) -> None:
         "_1. Запустить MVP продукта (метрика: 100 регистраций)_\n"
         "_2. Читать 30 минут ежедневно (метрика: 60 дней подряд)_\n"
         "_3. Бегать 3 раза в неделю (метрика: 36 пробежек)_",
+        reply_markup=setup_cancel_kb(),
         parse_mode="Markdown",
     )
 
@@ -110,7 +118,10 @@ async def on_goals(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     goals = _parse_list(text)
     if not goals:
-        await message.answer("Не нашёл целей. Напиши каждую цель с новой строки.")
+        await message.answer(
+            "Не нашёл целей. Напиши каждую цель с новой строки.",
+            reply_markup=setup_cancel_kb(),
+        )
         return
 
     await state.update_data(goals=goals)
@@ -123,6 +134,7 @@ async def on_goals(message: Message, state: FSMContext) -> None:
         "_- Написать 2 фичи для MVP_\n"
         "_- Читать 30 мин каждый день_\n"
         "_- Три пробежки по 30 мин_",
+        reply_markup=setup_cancel_kb(),
         parse_mode="Markdown",
     )
 
@@ -134,7 +146,10 @@ async def on_lead_actions(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     actions = _parse_list(text)
     if not actions:
-        await message.answer("Не нашёл действий. Напиши каждое с новой строки.")
+        await message.answer(
+            "Не нашёл действий. Напиши каждое с новой строки.",
+            reply_markup=setup_cancel_kb(),
+        )
         return
 
     await state.update_data(lead_actions=actions)
@@ -215,5 +230,25 @@ async def on_setup_edit(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(
             "Давай с начала.\n\n"
             "🎯 *Шаг 1: Видение* — опиши своё видение результата через 12 недель.",
+            reply_markup=setup_cancel_kb(),
             parse_mode="Markdown",
+        )
+
+
+@router.callback_query(SetupStates.vision, F.data == "setup_cancel")
+@router.callback_query(SetupStates.why, F.data == "setup_cancel")
+@router.callback_query(SetupStates.goals, F.data == "setup_cancel")
+@router.callback_query(SetupStates.lead_actions, F.data == "setup_cancel")
+@router.callback_query(SetupStates.confirm, F.data == "setup_cancel")
+async def on_setup_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer("Отменено")
+    await state.clear()
+    if callback.message:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            logger.debug("Failed to clear setup inline keyboard", exc_info=True)
+        await callback.message.answer(
+            "Окей, настройку отменил. Текущие данные оставил без изменений.\n\n"
+            "Когда будешь готов, запусти снова: /setup"
         )
