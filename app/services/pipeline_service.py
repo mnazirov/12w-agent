@@ -9,6 +9,8 @@ Composes MCP tools and OpenAI into a 4-step pipeline:
 4. save_weekly_report  (MCP) — persist enriched report
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from typing import TYPE_CHECKING
