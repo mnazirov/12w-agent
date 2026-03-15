@@ -507,7 +507,3 @@ GitHub Actions workflow: `.github/workflows/deploy.yml`.
 - `app/config.py` — env-конфиг
 - `db/models.py` / `db/repos.py` — доменная модель и репозитории
 - `mcp_server/server.py` — MCP API + SQLite аналитика
-
----
-
-Если нужен `CONTRIBUTING.md` с правилами внесения изменений (ветки, PR checklist, test strategy), его лучше вести отдельно от runtime-документации.
