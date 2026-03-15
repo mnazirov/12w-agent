@@ -12,6 +12,8 @@ from aiogram.types import BotCommand
 
 from app.config import (
     BOT_TOKEN,
+    CHAT_RATE_LIMIT_PER_MINUTE,
+    CHAT_SESSION_TIMEOUT_MINUTES,
     GOOGLE_CALENDAR_MCP_URL,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
@@ -24,6 +26,7 @@ from app.config import (
 from app.handlers import get_all_routers
 from app.handlers.motivation import router as motivation_router
 from app.middleware.activity_tracker import ActivityTrackerMiddleware
+from app.middleware.rate_limit import ChatRateLimiter
 from app.scheduler import (
     register_motivation_job,
     register_weekly_report_job,
@@ -32,6 +35,7 @@ from app.scheduler import (
 )
 from app.services.crypto_service import TokenEncryptor
 from app.services.google_auth_service import GoogleAuthService
+from app.services.chat_context_service import ChatContextService
 from app.services.message_cleanup import TrackingBot
 from app.services.mcp_client import MCPMotivationClient
 from app.services.mcp_orchestrator import MCPOrchestrator
@@ -163,6 +167,7 @@ async def _set_bot_commands(bot: Bot) -> None:
             BotCommand(command="plan", description="📝 План на день"),
             BotCommand(command="checkin", description="✅ Вечерний чек-ин"),
             BotCommand(command="weekly_review", description="📋 Недельный обзор"),
+            BotCommand(command="clear", description="🧹 Очистить контекст чата"),
             BotCommand(command="status", description="📈 Статус и прогресс"),
             BotCommand(command="report", description="📊 Аналитический отчёт за неделю"),
             BotCommand(command="motivation", description="⚙️ Настройки мотивации"),
@@ -248,15 +253,22 @@ async def run_bot() -> None:
     )
     openai_service = _OpenAIServiceAdapter()
     user_repo = _UserRepoAdapter()
+    chat_context_service = ChatContextService(
+        session_factory=get_session_factory(),
+        session_timeout_minutes=CHAT_SESSION_TIMEOUT_MINUTES,
+    )
+    chat_rate_limiter = ChatRateLimiter(max_per_minute=CHAT_RATE_LIMIT_PER_MINUTE)
 
     dp = Dispatcher(storage=MemoryStorage())
-    dp.message.middleware(ActivityTrackerMiddleware(mcp_client))
+    dp.message.middleware(ActivityTrackerMiddleware(mcp_client, chat_context_service))
     dp.callback_query.middleware(ActivityTrackerMiddleware(mcp_client))
     dp.workflow_data["mcp_client"] = mcp_client
     dp.workflow_data["mcp_orchestrator"] = mcp_orchestrator
     dp.workflow_data["openai_service"] = openai_service
     dp.workflow_data["user_repo"] = user_repo
     dp.workflow_data["google_auth_service"] = google_auth_service
+    dp.workflow_data["chat_context_service"] = chat_context_service
+    dp.workflow_data["chat_rate_limiter"] = chat_rate_limiter
 
     # Register routers
     dp.include_router(motivation_router)

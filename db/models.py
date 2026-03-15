@@ -39,6 +39,11 @@ class User(Base):
     morning_time: Mapped[str] = mapped_column(String(5), default="09:00")
     evening_time: Mapped[str] = mapped_column(String(5), default="21:00")
     preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    last_chat_response_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_chat_activity: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

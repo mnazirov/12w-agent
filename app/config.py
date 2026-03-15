@@ -32,6 +32,8 @@ TIMEZONE: str = os.environ.get("TZ", "Europe/Moscow")
 # --- Memory / Token budget ---
 MEMORY_CONTEXT_MAX_TOKENS: int = int(os.environ.get("MEMORY_CONTEXT_MAX_TOKENS", "500"))
 MAX_HISTORY_DAYS: int = int(os.environ.get("MAX_HISTORY_DAYS", "14"))
+CHAT_SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("CHAT_SESSION_TIMEOUT_MINUTES", "120"))
+CHAT_RATE_LIMIT_PER_MINUTE: int = int(os.environ.get("CHAT_RATE_LIMIT_PER_MINUTE", "15"))
 
 # --- MCP motivation server ---
 MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "http://mcp-server:8001/sse")

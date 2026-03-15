@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
@@ -13,6 +13,9 @@ from app.services.message_cleanup import delete_last_bot_message
 from app.services.mcp_client import MCPMotivationClient
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from app.services.chat_context_service import ChatContextService
 
 
 class ActivityTrackerMiddleware(BaseMiddleware):
@@ -28,9 +31,15 @@ class ActivityTrackerMiddleware(BaseMiddleware):
         "/motivation": "motivation",
         "/achievements": "achievements",
     }
+    _RESET_CHAT_COMMANDS = {"/plan", "/checkin", "/weekly_review"}
 
-    def __init__(self, mcp_client: MCPMotivationClient) -> None:
+    def __init__(
+        self,
+        mcp_client: MCPMotivationClient,
+        chat_context_service: ChatContextService | None = None,
+    ) -> None:
         self.mcp = mcp_client
+        self._chat_context_service = chat_context_service
 
     async def __call__(
         self,
@@ -51,6 +60,12 @@ class ActivityTrackerMiddleware(BaseMiddleware):
                 bot = data.get("bot")
                 if bot and event.chat:
                     await delete_last_bot_message(bot, event.chat.id)
+                if (
+                    self._chat_context_service is not None
+                    and command in self._RESET_CHAT_COMMANDS
+                    and user_id is not None
+                ):
+                    asyncio.create_task(self._clear_chat_session(user_id))
             else:
                 action = "chat"
             details = text[:150]
@@ -70,3 +85,13 @@ class ActivityTrackerMiddleware(BaseMiddleware):
             await self.mcp.log_activity(user_id=user_id, action=action, details=details)
         except Exception as exc:
             logger.debug("Activity tracking skipped for %s: %s", user_id, exc)
+
+    async def _clear_chat_session(self, user_id: int) -> None:
+        """Clear free chat session when user enters scripted FSM flows."""
+        service = self._chat_context_service
+        if service is None:
+            return
+        try:
+            await service.clear_session(user_id)
+        except Exception as exc:
+            logger.debug("Chat session reset skipped for %s: %s", user_id, exc)

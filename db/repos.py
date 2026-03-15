@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
 from sqlalchemy import delete, func, select, update
@@ -56,6 +56,55 @@ async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> Us
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
     result = await session.execute(select(User.telegram_id))
     return list(result.scalars().all())
+
+
+async def get_chat_response_id(session: AsyncSession, user_id: int) -> str | None:
+    """Return last Responses API response id for free chat session."""
+    result = await session.execute(
+        select(User.last_chat_response_id).where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_last_chat_activity(
+    session: AsyncSession,
+    user_id: int,
+) -> datetime | None:
+    """Return timestamp of the latest free chat activity."""
+    result = await session.execute(
+        select(User.last_chat_activity).where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_chat_response_id(
+    session: AsyncSession,
+    user_id: int,
+    response_id: str,
+) -> None:
+    """Persist Responses API response id and chat activity timestamp."""
+    await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            last_chat_response_id=response_id,
+            last_chat_activity=datetime.now(timezone.utc),
+        )
+    )
+    await session.flush()
+
+
+async def clear_chat_session(session: AsyncSession, user_id: int) -> None:
+    """Clear free chat session pointer for the user."""
+    await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            last_chat_response_id=None,
+            last_chat_activity=None,
+        )
+    )
+    await session.flush()
 
 
 # =========================================================================

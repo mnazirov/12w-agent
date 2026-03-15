@@ -53,6 +53,20 @@ def build_system_prompt(user_context: str) -> str:
     return render_template("system", user_context=user_context)
 
 
+def _compose_chat_instructions(system_prompt: str, user_context: str = "") -> str:
+    """Merge base chat instructions with dynamic user context."""
+    instructions = system_prompt.strip()
+    if "{user_context}" in instructions:
+        return instructions.replace(
+            "{user_context}",
+            user_context or "Нет дополнительного контекста.",
+        )
+
+    if user_context:
+        return f"{instructions}\n\n## Контекст пользователя\n{user_context}"
+    return instructions
+
+
 def _extract_json(text: str) -> str:
     """Try to extract JSON from model output that may contain markdown fences."""
     text = text.strip()
@@ -109,6 +123,7 @@ class _FunctionCall:
 class _ToolAuthRequiredInterrupt:
     output_text: str
     requires_auth: bool = True
+    response_id: str | None = None
 
 
 def _extract_function_calls(response: Any) -> list[_FunctionCall]:
@@ -171,6 +186,7 @@ async def _create_response_with_optional_tools(
     use_tools: bool = False,
     tool_server_names: list[str] | None = None,
     user_id: int | None = None,
+    previous_response_id: str | None = None,
     max_tool_rounds: int = 6,
 ) -> Any | _ToolAuthRequiredInterrupt:
     """Create a Responses API completion and optionally resolve MCP tool calls."""
@@ -188,6 +204,8 @@ async def _create_response_with_optional_tools(
     }
     if tools:
         request["tools"] = tools
+    if previous_response_id:
+        request["previous_response_id"] = previous_response_id
 
     response = await client.responses.create(**request)
     if not tools or mcp_orchestrator is None:
@@ -209,7 +227,10 @@ async def _create_response_with_optional_tools(
                 message = str(tool_result.get("error", "")).strip() or (
                     "Для работы с календарём подключите Google-аккаунт командой /connect_google."
                 )
-                return _ToolAuthRequiredInterrupt(output_text=message)
+                return _ToolAuthRequiredInterrupt(
+                    output_text=message,
+                    response_id=_obj_get(response, "id"),
+                )
             tool_outputs.append(
                 {
                     "type": "function_call_output",
@@ -308,6 +329,37 @@ async def call_structured(
         f"Failed to get valid structured response for '{template_name}' "
         f"after {max_retries + 1} attempts: {last_error}"
     )
+
+
+async def generate_chat(
+    user_message: str,
+    system_prompt: str,
+    user_context: str = "",
+    previous_response_id: str | None = None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
+    use_tools: bool = False,
+    tool_server_names: list[str] | None = None,
+    user_id: int | None = None,
+    max_output_tokens: int = OPENAI_MAX_TOKENS,
+) -> tuple[str, str | None]:
+    """Multi-turn free chat via Responses API."""
+    instructions = _compose_chat_instructions(system_prompt, user_context)
+
+    response = await _create_response_with_optional_tools(
+        model=OPENAI_MODEL,
+        instructions=instructions,
+        input_payload=user_message,
+        max_output_tokens=max_output_tokens,
+        mcp_orchestrator=mcp_orchestrator,
+        use_tools=use_tools,
+        tool_server_names=tool_server_names,
+        user_id=user_id,
+        previous_response_id=previous_response_id,
+    )
+    if isinstance(response, _ToolAuthRequiredInterrupt):
+        return response.output_text, response.response_id
+
+    return (response.output_text or "").strip(), _obj_get(response, "id")
 
 
 async def call_text(
