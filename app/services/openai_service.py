@@ -176,6 +176,59 @@ def _tool_output_to_string(result: Any) -> str:
         return json.dumps({"result": str(result)}, ensure_ascii=False)
 
 
+def _extract_requires_auth_message(result: Any) -> str | None:
+    """Detect auth-required tool result across dict/string payload variants."""
+    default_message = (
+        "Google-аккаунт не подключён или сессия истекла. "
+        "Используйте /connect_google"
+    )
+
+    if isinstance(result, dict):
+        if result.get("requires_auth"):
+            message = str(result.get("error", "")).strip()
+            return message or default_message
+
+        text_payload = result.get("text")
+        if isinstance(text_payload, str):
+            nested = _extract_requires_auth_message(text_payload)
+            if nested:
+                return nested
+        return None
+
+    if isinstance(result, str):
+        raw = result.strip()
+        if not raw:
+            return None
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError:
+            lower = raw.lower()
+            if "requires_auth" in lower and "true" in lower:
+                return default_message
+            return None
+        return _extract_requires_auth_message(decoded)
+
+    return None
+
+
+def _sanitize_auth_noise(text: str) -> str:
+    """Collapse noisy auth loops into a single user-facing instruction."""
+    if not text:
+        return ""
+    lowered = text.lower()
+    if lowered.count("requires_auth") >= 2:
+        return (
+            "Google-аккаунт не подключён или сессия истекла. "
+            "Используйте /connect_google"
+        )
+    if "/list_calendars" in lowered and "requires_auth" in lowered:
+        return (
+            "Google-аккаунт не подключён или сессия истекла. "
+            "Используйте /connect_google"
+        )
+    return text
+
+
 async def _create_response_with_optional_tools(
     *,
     model: str,
@@ -223,13 +276,10 @@ async def _create_response_with_optional_tools(
                 call.arguments,
                 user_id=user_id,
             )
-            if isinstance(tool_result, dict) and tool_result.get("requires_auth"):
-                message = str(tool_result.get("error", "")).strip() or (
-                    "Для работы с календарём подключите Google-аккаунт командой /connect_google."
-                )
+            auth_message = _extract_requires_auth_message(tool_result)
+            if auth_message:
                 return _ToolAuthRequiredInterrupt(
-                    output_text=message,
-                    response_id=_obj_get(response, "id"),
+                    output_text=auth_message,
                 )
             tool_outputs.append(
                 {
@@ -357,9 +407,12 @@ async def generate_chat(
         previous_response_id=previous_response_id,
     )
     if isinstance(response, _ToolAuthRequiredInterrupt):
-        return response.output_text, response.response_id
+        return response.output_text, None
 
-    return (response.output_text or "").strip(), _obj_get(response, "id")
+    text = _sanitize_auth_noise((response.output_text or "").strip())
+    if text != (response.output_text or "").strip():
+        return text, None
+    return text, _obj_get(response, "id")
 
 
 async def call_text(
