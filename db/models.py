@@ -65,6 +65,39 @@ class User(Base):
     sprints: Mapped[list[Sprint]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    google_token: Mapped[GoogleToken | None] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+# ---------------------------------------------------------------------------
+# google_tokens
+# ---------------------------------------------------------------------------
+class GoogleToken(Base):
+    __tablename__ = "google_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    token_expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    google_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="google_token")
 
 
 # ---------------------------------------------------------------------------

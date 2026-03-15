@@ -11,10 +11,14 @@ Composes MCP tools and OpenAI into a 4-step pipeline:
 
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from app.services.mcp_client import MCPMotivationClient
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from app.services.mcp_orchestrator import MCPOrchestrator
 
 _INSIGHTS_SYSTEM = """\
 You are an analytics coach for the 12 Week Year methodology.
@@ -69,11 +73,12 @@ def _build_insights_prompt(analysis: dict, previous: dict | None) -> str:
 
 
 async def run_analytics_pipeline(
-    mcp_client: MCPMotivationClient,
+    mcp_client: MCPMotivationClient | None,
     openai_service,
     user_id: int,
     days: int = 7,
     vision: str | None = None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ) -> dict:
     """Run the full 4-step analytics pipeline with client-side orchestration.
 
@@ -83,9 +88,23 @@ async def run_analytics_pipeline(
     pipeline_steps = []
     result = {"user_id": user_id, "success": False}
 
+    async def _motivation_tool(tool_name: str, args: dict) -> dict:
+        if mcp_orchestrator is not None:
+            return await mcp_orchestrator.call_tool_on_server(
+                "motivation",
+                tool_name,
+                args,
+            )
+        if mcp_client is None:
+            return {"error": "MCP client is not configured"}
+        return await mcp_client.call_tool(tool_name, args)
+
     # ── Step 1: Collect raw data (MCP) ─────────────────────────
     logger.info("Pipeline step 1: collect_week_data (user %s)", user_id)
-    raw_data = await mcp_client.collect_week_data(user_id, days)
+    raw_data = await _motivation_tool(
+        "collect_week_data",
+        {"user_id": user_id, "days": days},
+    )
     if "error" in raw_data:
         result["error"] = f"Step 1 failed: {raw_data['error']}"
         return result
@@ -94,7 +113,10 @@ async def run_analytics_pipeline(
 
     # ── Step 2: Analyze patterns (MCP) ─────────────────────────
     logger.info("Pipeline step 2: analyze_patterns (user %s)", user_id)
-    analysis = await mcp_client.analyze_patterns(raw_data_json)
+    analysis = await _motivation_tool(
+        "analyze_patterns",
+        {"raw_data_json": raw_data_json},
+    )
     if "error" in analysis:
         result["error"] = f"Step 2 failed: {analysis['error']}"
         return result
@@ -102,7 +124,10 @@ async def run_analytics_pipeline(
 
     # ── Step 2.5: Get previous reports (MCP) ───────────────────
     logger.info("Pipeline step 2.5: get_previous_reports (user %s)", user_id)
-    previous = await mcp_client.get_previous_reports(user_id, limit=1)
+    previous = await _motivation_tool(
+        "get_previous_reports",
+        {"user_id": user_id, "limit": 1},
+    )
     if "error" in previous:
         previous = None  # non-critical, continue without comparison
     else:
@@ -131,7 +156,10 @@ async def run_analytics_pipeline(
     # ── Step 4: Save report (MCP) ──────────────────────────────
     logger.info("Pipeline step 4: save_weekly_report (user %s)", user_id)
     enriched_json = json.dumps(analysis)
-    saved = await mcp_client.save_weekly_report(user_id, enriched_json)
+    saved = await _motivation_tool(
+        "save_weekly_report",
+        {"user_id": user_id, "report_json": enriched_json},
+    )
     if "error" in saved:
         result["error"] = f"Step 4 failed: {saved['error']}"
         result["analysis"] = analysis  # return analysis even if save failed

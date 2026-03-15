@@ -15,7 +15,7 @@ router = Router(name="chat")
 
 
 @router.message(F.text)
-async def on_text(message: Message) -> None:
+async def on_text(message: Message, mcp_orchestrator=None) -> None:
     """Catch-all for text messages that don't match any command or FSM state."""
     if not message.from_user:
         return
@@ -38,6 +38,10 @@ async def on_text(message: Message) -> None:
             user_message=text,
             goals=goal_titles,
             first_name=message.from_user.first_name,
+            mcp_orchestrator=mcp_orchestrator,
+            use_tools=bool(mcp_orchestrator),
+            tool_server_names=["calendar"],
+            user_id=user.id,
         )
         if reply:
             await message.answer(reply)

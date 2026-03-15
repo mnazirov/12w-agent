@@ -37,6 +37,12 @@ Create a focused daily plan following these rules:
 
 4. **timeblocks** — suggested time slots for each top-3 task: `{{"task": "...", "time_slot": "HH:MM–HH:MM"}}`.
 
+5. **If calendar tools are available** (`list_calendars`, `list_events`):
+   - Check the user's schedule for today before proposing `timeblocks`.
+   - Avoid placing tasks on top of existing events.
+   - If calendar tools return `requires_auth`, continue planning without calendar data.
+   - If no calendar tools/events are available, proceed with the best default plan.
+
 ## Output format
 Return ONLY valid JSON (no markdown, no explanation):
 ```

@@ -18,7 +18,7 @@ router = Router(name="plan")
 
 
 @router.message(Command("plan"))
-async def cmd_plan(message: Message) -> None:
+async def cmd_plan(message: Message, mcp_orchestrator=None) -> None:
     if not message.from_user:
         return
 
@@ -37,7 +37,11 @@ async def cmd_plan(message: Message) -> None:
         await message.answer("⏳ Генерирую план на сегодня…")
 
         try:
-            plan = await generate_daily_plan(session, user.id)
+            plan = await generate_daily_plan(
+                session,
+                user.id,
+                mcp_orchestrator=mcp_orchestrator,
+            )
             await session.commit()
         except Exception as e:
             logger.exception("Plan generation failed: %s", e)
@@ -59,7 +63,7 @@ async def cb_plan_accept(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "plan_regenerate")
-async def cb_plan_regenerate(callback: CallbackQuery) -> None:
+async def cb_plan_regenerate(callback: CallbackQuery, mcp_orchestrator=None) -> None:
     await callback.answer("Генерирую другой план…")
     if not callback.from_user or not callback.message:
         return
@@ -69,7 +73,11 @@ async def cb_plan_regenerate(callback: CallbackQuery) -> None:
             session, callback.from_user.id, callback.from_user.first_name
         )
         try:
-            plan = await generate_daily_plan(session, user.id)
+            plan = await generate_daily_plan(
+                session,
+                user.id,
+                mcp_orchestrator=mcp_orchestrator,
+            )
             await session.commit()
         except Exception as e:
             logger.exception("Plan regeneration failed: %s", e)

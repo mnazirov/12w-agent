@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,6 +19,9 @@ from db.base import get_session_factory
 from db.repos import get_all_telegram_ids
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from app.services.mcp_orchestrator import MCPOrchestrator
 
 _MOTIVATION_SYSTEM = """\
 You are a clinical psychologist, psychotherapist, and personal coach.
@@ -94,6 +98,23 @@ Do NOT use all of these at once. Pick 0-1 per message, only when it fits the con
 - balanced: empathy + light accountability, name the avoidance pattern gently, suggest a step
 - intense: direct and caring, name the pattern clearly, challenge with warmth, "ты знаешь что делать — вот твой минимальный шаг"
 """
+
+
+async def _call_motivation_tool(
+    mcp_orchestrator: MCPOrchestrator | None,
+    mcp_client: MCPMotivationClient | None,
+    tool_name: str,
+    arguments: dict,
+) -> dict:
+    if mcp_orchestrator is not None:
+        return await mcp_orchestrator.call_tool_on_server(
+            "motivation",
+            tool_name,
+            arguments,
+        )
+    if mcp_client is None:
+        return {"error": "MCP motivation client is not configured"}
+    return await mcp_client.call_tool(tool_name, arguments)
 
 
 async def _send_to_all(bot: Bot, text: str) -> None:
@@ -201,14 +222,22 @@ def _build_motivation_user_prompt(ctx: dict) -> str:
 
 async def check_and_send_motivation(
     bot: Bot,
-    mcp_client: MCPMotivationClient,
+    mcp_client: MCPMotivationClient | None,
     openai_service,
     user_repo=None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ) -> None:
     """Check engagement and send motivation messages to eligible users."""
     logger.info("Motivation check started")
     try:
-        users = await mcp_client.get_users_needing_motivation()
+        users_data = await _call_motivation_tool(
+            mcp_orchestrator,
+            mcp_client,
+            "get_users_needing_motivation",
+            {},
+        )
+        raw_users = users_data.get("users", []) if isinstance(users_data, dict) else []
+        users = [int(uid) for uid in raw_users if str(uid).isdigit()]
     except Exception as exc:
         logger.exception("Failed to fetch users needing motivation: %s", exc)
         return
@@ -219,7 +248,12 @@ async def check_and_send_motivation(
 
     for uid in users:
         try:
-            ctx = await mcp_client.generate_motivation_context(uid)
+            ctx = await _call_motivation_tool(
+                mcp_orchestrator,
+                mcp_client,
+                "generate_motivation_context",
+                {"user_id": uid},
+            )
             if not isinstance(ctx, dict) or "error" in ctx:
                 continue
 
@@ -255,11 +289,16 @@ async def check_and_send_motivation(
                 await bot.send_message(uid, ai_message)
 
             engagement = ctx.get("engagement", {}) if isinstance(ctx.get("engagement"), dict) else {}
-            await mcp_client.record_motivation_sent(
-                user_id=uid,
-                message_type=str(ctx.get("recommended_type", "support")),
-                engagement_level=str(engagement.get("engagement_level", "")),
-                message=ai_message,
+            await _call_motivation_tool(
+                mcp_orchestrator,
+                mcp_client,
+                "record_motivation_sent",
+                {
+                    "user_id": uid,
+                    "message_type": str(ctx.get("recommended_type", "support")),
+                    "engagement_level": str(engagement.get("engagement_level", "")),
+                    "message": ai_message,
+                },
             )
             logger.info("Motivation message sent to user %s", uid)
         except Exception as exc:
@@ -270,9 +309,10 @@ async def check_and_send_motivation(
 def register_motivation_job(
     scheduler: AsyncIOScheduler,
     bot: Bot,
-    mcp_client: MCPMotivationClient,
+    mcp_client: MCPMotivationClient | None,
     openai_service,
     user_repo=None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ) -> None:
     """Register periodic motivation check job in APScheduler."""
     scheduler.add_job(
@@ -284,6 +324,7 @@ def register_motivation_job(
             "mcp_client": mcp_client,
             "openai_service": openai_service,
             "user_repo": user_repo,
+            "mcp_orchestrator": mcp_orchestrator,
         },
         id="motivation_check",
         replace_existing=True,
@@ -293,9 +334,10 @@ def register_motivation_job(
 
 async def weekly_auto_report(
     bot: Bot,
-    mcp_client: MCPMotivationClient,
+    mcp_client: MCPMotivationClient | None,
     openai_service,
     user_repo=None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ):
     """Scheduler job: автоматический еженедельный отчёт (воскресенье)."""
     from app.services.pipeline_service import run_analytics_pipeline
@@ -303,15 +345,16 @@ async def weekly_auto_report(
     logger.info("Weekly auto-report started")
 
     try:
-        user_ids = await mcp_client.get_users_needing_motivation()
-    except Exception:
-        # Fallback: get all users with any activity
-        try:
-            data = await mcp_client._call("get_users_needing_motivation", {})
-            user_ids = data.get("users", [])
-        except Exception as exc:
-            logger.error("Cannot get user list for weekly report: %s", exc)
-            return
+        data = await _call_motivation_tool(
+            mcp_orchestrator,
+            mcp_client,
+            "get_users_needing_motivation",
+            {},
+        )
+        user_ids = data.get("users", []) if isinstance(data, dict) else []
+    except Exception as exc:
+        logger.error("Cannot get user list for weekly report: %s", exc)
+        return
 
     # Also include users who have motivation enabled but might not need motivation now
     # For simplicity, run for all users who have any config
@@ -336,6 +379,7 @@ async def weekly_auto_report(
                 user_id=uid,
                 days=7,
                 vision=vision,
+                mcp_orchestrator=mcp_orchestrator,
             )
 
             if not result.get("success"):
@@ -367,9 +411,10 @@ async def weekly_auto_report(
 def register_weekly_report_job(
     scheduler,
     bot: Bot,
-    mcp_client: MCPMotivationClient,
+    mcp_client: MCPMotivationClient | None,
     openai_service,
     user_repo=None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ):
     """Register weekly report cron job (Sunday 20:00)."""
     scheduler.add_job(
@@ -383,6 +428,7 @@ def register_weekly_report_job(
             "mcp_client": mcp_client,
             "openai_service": openai_service,
             "user_repo": user_repo,
+            "mcp_orchestrator": mcp_orchestrator,
         },
         id="weekly_auto_report",
         replace_existing=True,

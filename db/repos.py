@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
 from sqlalchemy import delete, func, select, update
@@ -13,6 +13,7 @@ from db.models import (
     Checkin,
     DailyPlan,
     Goal12W,
+    GoogleToken,
     MemoryRecord,
     Sprint,
     User,
@@ -55,6 +56,98 @@ async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> Us
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
     result = await session.execute(select(User.telegram_id))
     return list(result.scalars().all())
+
+
+# =========================================================================
+# Google OAuth tokens
+# =========================================================================
+
+async def save_google_tokens(
+    session: AsyncSession,
+    user_id: int,
+    telegram_id: int,
+    access_token_enc: str,
+    refresh_token_enc: str,
+    token_expiry: datetime,
+    google_email: str | None,
+    scopes: str,
+) -> GoogleToken:
+    """Upsert encrypted Google OAuth token record for a user."""
+    stmt = select(GoogleToken).where(GoogleToken.user_id == user_id)
+    result = await session.execute(stmt)
+    row = result.scalar_one_or_none()
+    if row is not None:
+        row.telegram_id = telegram_id
+        row.access_token_encrypted = access_token_enc
+        row.refresh_token_encrypted = refresh_token_enc
+        row.token_expiry = token_expiry
+        row.google_email = google_email
+        row.scopes = scopes
+        await session.flush()
+        return row
+
+    row = GoogleToken(
+        user_id=user_id,
+        telegram_id=telegram_id,
+        access_token_encrypted=access_token_enc,
+        refresh_token_encrypted=refresh_token_enc,
+        token_expiry=token_expiry,
+        google_email=google_email,
+        scopes=scopes,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def get_google_tokens(session: AsyncSession, user_id: int) -> GoogleToken | None:
+    result = await session.execute(
+        select(GoogleToken).where(GoogleToken.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_google_tokens_by_telegram_id(
+    session: AsyncSession,
+    telegram_id: int,
+) -> GoogleToken | None:
+    result = await session.execute(
+        select(GoogleToken).where(GoogleToken.telegram_id == telegram_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_google_access_token(
+    session: AsyncSession,
+    user_id: int,
+    access_token_enc: str,
+    token_expiry: datetime,
+) -> int:
+    result = await session.execute(
+        update(GoogleToken)
+        .where(GoogleToken.user_id == user_id)
+        .values(
+            access_token_encrypted=access_token_enc,
+            token_expiry=token_expiry,
+        )
+    )
+    await session.flush()
+    return int(result.rowcount or 0)
+
+
+async def delete_google_tokens(session: AsyncSession, user_id: int) -> int:
+    result = await session.execute(
+        delete(GoogleToken).where(GoogleToken.user_id == user_id)
+    )
+    await session.flush()
+    return int(result.rowcount or 0)
+
+
+async def has_google_connected(session: AsyncSession, user_id: int) -> bool:
+    result = await session.execute(
+        select(GoogleToken.id).where(GoogleToken.user_id == user_id)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 # =========================================================================

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,9 @@ from app.services.openai_service import call_structured
 from db import repos
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from app.services.mcp_orchestrator import MCPOrchestrator
 
 
 # ── Pydantic models for AI response validation ──────────────────────────
@@ -45,6 +48,7 @@ async def generate_daily_plan(
     session: AsyncSession,
     user_id: int,
     today: date | None = None,
+    mcp_orchestrator: MCPOrchestrator | None = None,
 ) -> DailyPlanResponse:
     """Generate (or regenerate) a daily plan for the user.
 
@@ -120,6 +124,9 @@ async def generate_daily_plan(
         },
         response_model=DailyPlanResponse,
         system_context=user_context,
+        mcp_orchestrator=mcp_orchestrator,
+        use_tools=bool(mcp_orchestrator),
+        tool_server_names=["calendar"],
     )
 
     # Enforce limits

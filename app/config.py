@@ -35,6 +35,17 @@ MAX_HISTORY_DAYS: int = int(os.environ.get("MAX_HISTORY_DAYS", "14"))
 
 # --- MCP motivation server ---
 MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "http://mcp-server:8001/sse")
+GOOGLE_CALENDAR_MCP_URL: str = os.getenv(
+    "GOOGLE_CALENDAR_MCP_URL",
+    "http://google-calendar-mcp:8002/sse",
+)
+
+# --- Google OAuth2 ---
+GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "")
+GOOGLE_TOKENS_ENCRYPTION_KEY: str = os.getenv("GOOGLE_TOKENS_ENCRYPTION_KEY", "")
+OAUTH_CALLBACK_PORT: int = int(os.getenv("OAUTH_CALLBACK_PORT", "8080"))
 
 # --- 12-Week Year defaults ---
 TWELVE_WEEKS: int = 12

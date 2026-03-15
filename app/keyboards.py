@@ -109,3 +109,47 @@ def skip_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data="skip")],
     ])
+
+
+# ── Google OAuth ────────────────────────────────────────────────────────
+
+def google_connect_keyboard(auth_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔗 Подключить Google", url=auth_url)],
+        ]
+    )
+
+
+def google_disconnect_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Да, отключить",
+                    callback_data="google_disconnect_confirm",
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отмена",
+                    callback_data="google_disconnect_cancel",
+                ),
+            ],
+        ]
+    )
+
+
+def google_reconnect_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Переподключить", callback_data="google_reconnect")],
+        ]
+    )
+
+
+def google_status_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Переподключить", callback_data="google_reconnect")],
+            [InlineKeyboardButton(text="🔓 Отключить", callback_data="google_disconnect")],
+        ]
+    )

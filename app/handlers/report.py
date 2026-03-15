@@ -46,6 +46,7 @@ async def cmd_report(
     mcp_client: MCPMotivationClient,
     openai_service=None,
     user_repo=None,
+    mcp_orchestrator=None,
 ):
     """Run the full analytics pipeline and display the report."""
     uid = message.from_user.id
@@ -67,6 +68,7 @@ async def cmd_report(
         user_id=uid,
         days=7,
         vision=vision,
+        mcp_orchestrator=mcp_orchestrator,
     )
 
     if not result.get("success"):
