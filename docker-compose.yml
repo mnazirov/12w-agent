@@ -83,18 +83,18 @@ services:
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
       NGROK_DOMAIN: ${NGROK_DOMAIN:-}
-    command:
+    entrypoint:
       - "/bin/sh"
-      - "-lc"
-      - |
-        if [ -z "$NGROK_AUTHTOKEN" ]; then
-          echo "NGROK_AUTHTOKEN is empty";
-          exit 1;
-        fi
-        if [ -n "$NGROK_DOMAIN" ]; then
-          exec ngrok http --authtoken "$NGROK_AUTHTOKEN" --domain "$NGROK_DOMAIN" bot:8080;
-        fi
-        exec ngrok http --authtoken "$NGROK_AUTHTOKEN" bot:8080;
+      - "-c"
+    command: |
+      if [ -z "$NGROK_AUTHTOKEN" ]; then
+        echo "NGROK_AUTHTOKEN is empty";
+        exit 1;
+      fi
+      if [ -n "$NGROK_DOMAIN" ]; then
+        exec ngrok http --authtoken "$NGROK_AUTHTOKEN" --domain "$NGROK_DOMAIN" bot:8080;
+      fi
+      exec ngrok http --authtoken "$NGROK_AUTHTOKEN" bot:8080;
 
 volumes:
   postgres_data:
