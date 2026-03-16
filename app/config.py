@@ -41,6 +41,10 @@ GOOGLE_CALENDAR_MCP_URL: str = os.getenv(
     "GOOGLE_CALENDAR_MCP_URL",
     "http://google-calendar-mcp:8002/sse",
 )
+WEATHER_MCP_URL: str = os.getenv(
+    "WEATHER_MCP_URL",
+    "http://weather-mcp:8003/sse",
+)
 
 # --- Google OAuth2 ---
 GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

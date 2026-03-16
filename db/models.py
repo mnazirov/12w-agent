@@ -35,6 +35,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(255), nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     morning_time: Mapped[str] = mapped_column(String(5), default="09:00")
     evening_time: Mapped[str] = mapped_column(String(5), default="21:00")

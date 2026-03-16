@@ -38,10 +38,10 @@ def list_events(
     calendar_id: str = "primary",
     time_min: str | None = None,
     time_max: str | None = None,
-    _access_token: str = "",
+    access_token: str = "",
 ) -> str:
     """Return events in the given interval (mock always returns empty list)."""
-    if not _access_token:
+    if not access_token:
         return _auth_error()
     _ = (calendar_id, time_min, time_max)
     return json.dumps({"events": [], "calendar_id": calendar_id})
@@ -53,10 +53,10 @@ def create_event(
     start: str,
     end: str,
     calendar_id: str = "primary",
-    _access_token: str = "",
+    access_token: str = "",
 ) -> str:
     """Create event in calendar (mock response)."""
-    if not _access_token:
+    if not access_token:
         return _auth_error()
     _ = (summary, start, end, calendar_id)
     return json.dumps({"status": "created", "id": "mock-123"})
@@ -66,10 +66,10 @@ def create_event(
 def delete_event(
     event_id: str,
     calendar_id: str = "primary",
-    _access_token: str = "",
+    access_token: str = "",
 ) -> str:
     """Delete event from calendar (mock response)."""
-    if not _access_token:
+    if not access_token:
         return _auth_error()
     _ = (event_id, calendar_id)
     return json.dumps({"status": "deleted"})

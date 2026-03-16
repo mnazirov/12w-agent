@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from app.services.openai_service import (
     _extract_requires_auth_message,
+    _sanitize_auth_noise,
     _strip_tool_trace_artifacts,
 )
 
@@ -48,3 +49,15 @@ def test_extract_requires_auth_message_from_nested_text_payload() -> None:
     }
     message = _extract_requires_auth_message(result)
     assert message == "Not authenticated"
+
+
+def test_sanitize_auth_noise_collapses_inline_requires_auth_json() -> None:
+    text = (
+        'Мне нужен доступ к календарям.{"requires_auth":true}'
+        '{"tool":"list_calendars"} мог бы помочь'
+    )
+    cleaned = _sanitize_auth_noise(text)
+    assert cleaned == (
+        "Google-аккаунт не подключён или сессия истекла. "
+        "Используйте /connect_google"
+    )

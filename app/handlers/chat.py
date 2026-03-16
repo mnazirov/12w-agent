@@ -92,7 +92,7 @@ async def on_text(
             previous_response_id=previous_response_id,
             mcp_orchestrator=mcp_orchestrator,
             use_tools=bool(mcp_orchestrator),
-            tool_server_names=["calendar"],
+            tool_server_names=["calendar", "weather"],
             user_id=user.id,
         )
         if chat_context_service is not None:

@@ -10,6 +10,7 @@ class SetupStates(StatesGroup):
     why = State()
     goals = State()
     lead_actions = State()
+    city = State()
     confirm = State()
 
 
@@ -19,3 +20,8 @@ class CheckinStates(StatesGroup):
     obstacles = State()
     lesson = State()
     confidence = State()
+
+
+class PlanStates(StatesGroup):
+    """Plan flow: request city when needed before generation."""
+    waiting_city = State()

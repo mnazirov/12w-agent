@@ -1,4 +1,4 @@
-"""Handler for /setup — FSM flow: vision → why → goals → lead actions → confirm."""
+"""Handler for /setup — FSM flow: vision → why → goals → lead actions → city → confirm."""
 from __future__ import annotations
 
 import logging
@@ -17,6 +17,7 @@ from db.repos import (
     create_sprint,
     deactivate_all_goals,
     get_or_create_user,
+    update_user_city,
     upsert_vision,
     upsert_weekly_plan,
 )
@@ -50,7 +51,7 @@ async def cmd_setup(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(SetupStates.vision)
     await message.answer(
-        "🎯 *Шаг 1 из 4: Видение*\n\n"
+        "🎯 *Шаг 1 из 5: Видение*\n\n"
         "Опиши своё видение результата через 12 недель.\n"
         "Как будет выглядеть твоя жизнь, когда цели достигнуты?\n\n"
         "_Пример: «Я запустил продукт, набрал первых 100 пользователей, "
@@ -75,7 +76,7 @@ async def on_vision(message: Message, state: FSMContext) -> None:
     await state.update_data(vision=text)
     await state.set_state(SetupStates.why)
     await message.answer(
-        "💡 *Шаг 2 из 4: Почему это важно?*\n\n"
+        "💡 *Шаг 2 из 5: Почему это важно?*\n\n"
         "Почему эти результаты важны для тебя?\n"
         "Что изменится в твоей жизни?\n\n"
         "_Чем глубже «почему», тем сильнее мотивация в трудные дни._",
@@ -99,7 +100,7 @@ async def on_why(message: Message, state: FSMContext) -> None:
     await state.update_data(why=text)
     await state.set_state(SetupStates.goals)
     await message.answer(
-        "🎯 *Шаг 3 из 4: Цели*\n\n"
+        "🎯 *Шаг 3 из 5: Цели*\n\n"
         "Назови 1–3 конкретные цели на 12 недель.\n"
         "Желательно с измеримыми метриками.\n\n"
         "_Пример:_\n"
@@ -127,7 +128,7 @@ async def on_goals(message: Message, state: FSMContext) -> None:
     await state.update_data(goals=goals)
     await state.set_state(SetupStates.lead_actions)
     await message.answer(
-        "📌 *Шаг 4 из 4: Еженедельные действия*\n\n"
+        "📌 *Шаг 4 из 5: Еженедельные действия*\n\n"
         "Какие конкретные действия каждую неделю приведут к целям?\n"
         "Это «ведущие показатели» — то, что ты контролируешь.\n\n"
         "_Пример:_\n"
@@ -153,6 +154,27 @@ async def on_lead_actions(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(lead_actions=actions)
+    await state.set_state(SetupStates.city)
+    await message.answer(
+        "🌤 *Шаг 5 из 5: Город*\n\n"
+        "В каком ты городе обычно планируешь день?\n\n"
+        "_Пример: Москва, Санкт-Петербург, Berlin_",
+        reply_markup=setup_cancel_kb(),
+        parse_mode="Markdown",
+    )
+
+
+@router.message(SetupStates.city)
+async def on_city(message: Message, state: FSMContext) -> None:
+    city = (message.text or "").strip()
+    if not city:
+        await message.answer(
+            "Напиши название города текстом.",
+            reply_markup=setup_cancel_kb(),
+        )
+        return
+
+    await state.update_data(city=city)
     await state.set_state(SetupStates.confirm)
 
     data = await state.get_data()
@@ -161,7 +183,8 @@ async def on_lead_actions(message: Message, state: FSMContext) -> None:
         f"*Видение:* {data['vision']}\n\n"
         f"*Почему:* {data['why']}\n\n"
         "*Цели:*\n" + "\n".join(f"  {i}. {g}" for i, g in enumerate(data['goals'], 1)) + "\n\n"
-        "*Еженедельные действия:*\n" + "\n".join(f"  • {a}" for a in data['lead_actions'])
+        "*Еженедельные действия:*\n" + "\n".join(f"  • {a}" for a in data['lead_actions']) + "\n\n"
+        f"*Город:* {data['city']}"
     )
     await message.answer(summary, reply_markup=setup_confirm_kb(), parse_mode="Markdown")
 
@@ -205,6 +228,7 @@ async def on_setup_save(callback: CallbackQuery, state: FSMContext) -> None:
             year=sprint.start_date.year,
             lead_actions=data["lead_actions"],
         )
+        await update_user_city(session, user.id, data["city"])
 
         await session.commit()
 
@@ -239,6 +263,7 @@ async def on_setup_edit(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(SetupStates.why, F.data == "setup_cancel")
 @router.callback_query(SetupStates.goals, F.data == "setup_cancel")
 @router.callback_query(SetupStates.lead_actions, F.data == "setup_cancel")
+@router.callback_query(SetupStates.city, F.data == "setup_cancel")
 @router.callback_query(SetupStates.confirm, F.data == "setup_cancel")
 async def on_setup_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer("Отменено")

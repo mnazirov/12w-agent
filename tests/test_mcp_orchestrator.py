@@ -120,7 +120,7 @@ async def test_routes_tool_call_to_matching_server() -> None:
     assert result == {"events": []}
     calendar.call_tool.assert_awaited_once_with(
         "list_events",
-        {"calendar_id": "primary", "_access_token": "mock-token"},
+        {"calendar_id": "primary", "access_token": "mock-token"},
     )
     motivation.call_tool.assert_not_called()
 

@@ -53,6 +53,24 @@ async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> Us
     return result.scalar_one_or_none()
 
 
+async def update_user_city(session: AsyncSession, user_id: int, city: str) -> None:
+    await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(city=city.strip() if city else None)
+    )
+    await session.flush()
+
+
+async def get_user_city(session: AsyncSession, user_id: int) -> str | None:
+    result = await session.execute(select(User.city).where(User.id == user_id))
+    city = result.scalar_one_or_none()
+    if city is None:
+        return None
+    city = city.strip()
+    return city or None
+
+
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
     result = await session.execute(select(User.telegram_id))
     return list(result.scalars().all())

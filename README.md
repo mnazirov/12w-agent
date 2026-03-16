@@ -2,10 +2,11 @@
 
 Telegram-бот для личной продуктивности по методике «12 недель в году».
 
-Проект состоит из трёх сервисов:
+Проект состоит из четырёх сервисов:
 - основной Telegram-бот (aiogram + PostgreSQL + OpenAI)
 - отдельный MCP-сервер мотивации и аналитики (FastMCP + SQLite)
 - отдельный MCP-сервер календаря (mock FastMCP, далее заменяется на реальный Google Calendar MCP)
+- отдельный MCP-сервер погоды (FastMCP + Open-Meteo, без API key)
 
 ## Содержание
 - [Возможности](#возможности)
@@ -33,8 +34,8 @@ Telegram-бот для личной продуктивности по метод
 | Команда | Назначение |
 | --- | --- |
 | `/start` | Приветствие, навигация, главное меню |
-| `/setup` | Многошаговая настройка: видение, зачем, цели, weekly lead actions |
-| `/plan` | Генерация плана на день (Top-3 + дополнительные задачи + таймблоки) |
+| `/setup` | Многошаговая настройка: видение, зачем, цели, weekly lead actions, город |
+| `/plan` | Генерация плана на день с учётом календаря/погоды (`/plan <город>` для одноразового override) |
 | `/checkin` | Вечерний чек-ин с анализом и WOOP |
 | `/weekly_review` | Недельный обзор и рефлексия |
 | `/clear` | Сброс контекста свободного чата (цели и прогресс сохраняются) |
@@ -64,8 +65,10 @@ graph TD
     S --> ORC[MCP Orchestrator]
     ORC --> MC1[MCP motivation]
     ORC --> MC2[MCP calendar]
+    ORC --> MC3[MCP weather]
     MC1 --> MS[MCP Server FastMCP]
     MC2 --> GMS[Google Calendar MCP Mock]
+    MC3 --> WM[Open-Meteo API]
     MS --> SQ[(SQLite)]
     B --> SCH[APScheduler]
     SCH --> S
@@ -78,6 +81,7 @@ graph TD
 - MCP вызовы идут через orchestration-слой (`app/services/mcp_orchestrator.py`) с auto-routing tools.
 - Подсистема мотивации и аналитики вынесена в отдельный MCP-сервер на SQLite (`mcp_server/server.py`).
 - Календарный MCP-сервис запускается отдельно (`google_calendar_mcp/`), на старте используется mock.
+- Погодный MCP-сервис запускается отдельно (`weather_mcp/`) и обращается к Open-Meteo.
 - Планировщик APScheduler шлёт напоминания и запускает периодические задачи.
 
 ## Технологический стек
@@ -132,6 +136,11 @@ graph TD
 │   ├── mock_server.py             # Mock calendar MCP tools
 │   ├── run.py                     # Запуск mock MCP сервера
 │   └── Dockerfile                 # Контейнер календарного сервиса
+├── weather_mcp/
+│   ├── server.py                  # Weather MCP tools (Open-Meteo)
+│   ├── run.py                     # Запуск weather MCP сервера
+│   ├── Dockerfile                 # Контейнер weather сервиса
+│   └── requirements.txt           # Зависимости weather сервиса
 ├── migrations/                    # Alembic migrations
 ├── tests/                         # pytest тесты
 ├── scripts/deploy.sh              # Скрипт деплоя
@@ -162,6 +171,7 @@ OPENAI_API_KEY=...
 DATABASE_URL=postgresql://12w:12w@postgres:5432/12w
 MCP_SERVER_URL=http://mcp-server:8001/sse
 GOOGLE_CALENDAR_MCP_URL=http://google-calendar-mcp:8002/sse
+WEATHER_MCP_URL=http://weather-mcp:8003/sse
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=https://<ngrok-domain>/oauth/google/callback
@@ -189,6 +199,7 @@ docker compose --profile ngrok up -d --build
 - `postgres` (`postgres:16-alpine`)
 - `mcp-server` (из `Dockerfile.mcp`)
 - `google-calendar-mcp` (из `google_calendar_mcp/Dockerfile`)
+- `weather-mcp` (из `weather_mcp/Dockerfile`)
 - `bot` (из `Dockerfile`)
 - `ngrok` (опционально, профиль `ngrok`, проксирует `bot:8080` наружу)
 
@@ -226,10 +237,16 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
-### 4. Запустите MCP-сервер
+### 4. Запустите MCP-серверы
 
 ```bash
 python mcp_server/run.py
+```
+
+В отдельном терминале запустите weather MCP:
+
+```bash
+python weather_mcp/run.py
 ```
 
 ### 5. Запустите бота
@@ -254,6 +271,7 @@ python main.py
 | `DATABASE_URL` | Да | `""` | Подключение к PostgreSQL |
 | `MCP_SERVER_URL` | Нет | `http://mcp-server:8001/sse` | SSE endpoint MCP сервера |
 | `GOOGLE_CALENDAR_MCP_URL` | Нет | `http://google-calendar-mcp:8002/sse` | SSE endpoint calendar MCP сервера |
+| `WEATHER_MCP_URL` | Нет | `http://weather-mcp:8003/sse` | SSE endpoint weather MCP сервера |
 | `GOOGLE_CLIENT_ID` | Для OAuth | `""` | Google OAuth client id |
 | `GOOGLE_CLIENT_SECRET` | Для OAuth | `""` | Google OAuth client secret |
 | `GOOGLE_REDIRECT_URI` | Для OAuth | `""` | Callback URL (`https://.../oauth/google/callback`) |
@@ -309,6 +327,7 @@ docker compose up -d --build
 ```bash
 alembic upgrade head
 python mcp_server/run.py
+python weather_mcp/run.py
 python main.py
 ```
 
@@ -364,6 +383,7 @@ pytest tests/test_planning_service.py::TestDailyPlanResponse::test_valid_plan -v
 `app/services/mcp_orchestrator.py` агрегирует несколько MCP-серверов:
 - `motivation` -> `MCP_SERVER_URL`
 - `calendar` -> `GOOGLE_CALENDAR_MCP_URL`
+- `weather` -> `WEATHER_MCP_URL`
 
 Что делает оркестратор:
 - подключается к каждому серверу независимо (`connect_all` / `disconnect_all`)

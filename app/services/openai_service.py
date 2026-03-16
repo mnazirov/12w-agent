@@ -26,6 +26,13 @@ if TYPE_CHECKING:
     from app.services.mcp_orchestrator import MCPOrchestrator
 
 
+def _calendar_auth_required_message() -> str:
+    return (
+        "Google-аккаунт не подключён или сессия истекла. "
+        "Используйте /connect_google"
+    )
+
+
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
@@ -179,10 +186,7 @@ def _tool_output_to_string(result: Any) -> str:
 
 def _extract_requires_auth_message(result: Any) -> str | None:
     """Detect auth-required tool result across dict/string payload variants."""
-    default_message = (
-        "Google-аккаунт не подключён или сессия истекла. "
-        "Используйте /connect_google"
-    )
+    default_message = _calendar_auth_required_message()
 
     if isinstance(result, dict):
         if result.get("requires_auth"):
@@ -217,16 +221,12 @@ def _sanitize_auth_noise(text: str) -> str:
     if not text:
         return ""
     lowered = text.lower()
+    if re.search(r'"requires_auth"\s*:\s*true', lowered):
+        return _calendar_auth_required_message()
     if lowered.count("requires_auth") >= 2:
-        return (
-            "Google-аккаунт не подключён или сессия истекла. "
-            "Используйте /connect_google"
-        )
+        return _calendar_auth_required_message()
     if "/list_calendars" in lowered and "requires_auth" in lowered:
-        return (
-            "Google-аккаунт не подключён или сессия истекла. "
-            "Используйте /connect_google"
-        )
+        return _calendar_auth_required_message()
     return text
 
 

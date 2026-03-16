@@ -300,5 +300,5 @@ class MCPOrchestrator:
                 "requires_auth": True,
             }
 
-        arguments["_access_token"] = token
+        arguments["access_token"] = token
         return None

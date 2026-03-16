@@ -22,6 +22,7 @@ from app.config import (
     MCP_SERVER_URL,
     OAUTH_CALLBACK_PORT,
     OPENAI_MODEL,
+    WEATHER_MCP_URL,
 )
 from app.handlers import get_all_routers
 from app.handlers.motivation import router as motivation_router
@@ -243,6 +244,11 @@ async def run_bot() -> None:
         name="calendar",
         url=GOOGLE_CALENDAR_MCP_URL,
         description="Google Calendar MCP server",
+    )
+    await mcp_orchestrator.register_server(
+        name="weather",
+        url=WEATHER_MCP_URL,
+        description="Погода: прогноз и оценка условий для тренировок",
     )
     await mcp_orchestrator.connect_all()
 

@@ -50,6 +50,20 @@ services:
       retries: 3
       start_period: 10s
 
+  weather-mcp:
+    build:
+      context: ./weather_mcp
+      dockerfile: Dockerfile
+    environment:
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8003
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',8003),2); s.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   bot:
     build: .
     env_file: .env
@@ -57,6 +71,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://12w:12w@postgres:5432/12w}
       MCP_SERVER_URL: http://mcp-server:8001/sse
       GOOGLE_CALENDAR_MCP_URL: http://google-calendar-mcp:8002/sse
+      WEATHER_MCP_URL: http://weather-mcp:8003/sse
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
@@ -68,6 +83,8 @@ services:
       mcp-server:
         condition: service_started
       google-calendar-mcp:
+        condition: service_started
+      weather-mcp:
         condition: service_started
       postgres:
         condition: service_healthy
