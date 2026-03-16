@@ -144,12 +144,14 @@ async def _start_oauth_server(
     bot: Bot,
     google_auth_service: GoogleAuthService,
     port: int,
+    chat_context_service: ChatContextService | None = None,
 ) -> web.AppRunner:
     """Run OAuth callback HTTP server in parallel with bot polling."""
     app_web = web.Application()
     app_web.add_routes(oauth_routes)
     app_web["bot"] = bot
     app_web["google_auth_service"] = google_auth_service
+    app_web["chat_context_service"] = chat_context_service
 
     runner = web.AppRunner(app_web)
     await runner.setup()
@@ -199,6 +201,11 @@ async def run_bot() -> None:
     except Exception as exc:
         logger.warning("Failed to set bot commands: %s", exc)
 
+    chat_context_service = ChatContextService(
+        session_factory=get_session_factory(),
+        session_timeout_minutes=CHAT_SESSION_TIMEOUT_MINUTES,
+    )
+
     google_auth_service: GoogleAuthService | None = None
     oauth_runner: web.AppRunner | None = None
 
@@ -222,6 +229,7 @@ async def run_bot() -> None:
                 bot=bot,
                 google_auth_service=google_auth_service,
                 port=OAUTH_CALLBACK_PORT,
+                chat_context_service=chat_context_service,
             )
         except Exception as exc:
             logger.exception("Failed to initialize Google OAuth service: %s", exc)
@@ -259,10 +267,6 @@ async def run_bot() -> None:
     )
     openai_service = _OpenAIServiceAdapter()
     user_repo = _UserRepoAdapter()
-    chat_context_service = ChatContextService(
-        session_factory=get_session_factory(),
-        session_timeout_minutes=CHAT_SESSION_TIMEOUT_MINUTES,
-    )
     chat_rate_limiter = ChatRateLimiter(max_per_minute=CHAT_RATE_LIMIT_PER_MINUTE)
 
     dp = Dispatcher(storage=MemoryStorage())

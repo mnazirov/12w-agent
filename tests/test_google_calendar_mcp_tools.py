@@ -93,3 +93,22 @@ def test_list_calendars_returns_error_payload_on_upstream_failure(monkeypatch) -
     payload = _loads(mock_server.list_calendars(access_token="token"))
     assert payload["error"] == "Google Calendar API request failed"
     assert payload["status_code"] == 500
+
+
+def test_list_calendars_insufficient_scope_prompts_reconnect(monkeypatch) -> None:
+    def fake_call_google_api(**_: object) -> tuple[int, dict]:
+        return (
+            403,
+            {
+                "error": {
+                    "message": "Request had insufficient authentication scopes.",
+                    "errors": [{"reason": "insufficientPermissions"}],
+                }
+            },
+        )
+
+    monkeypatch.setattr(mock_server, "_call_google_api", fake_call_google_api)
+
+    payload = _loads(mock_server.list_calendars(access_token="token"))
+    assert payload["requires_auth"] is True
+    assert "обновить доступ" in payload["error"]

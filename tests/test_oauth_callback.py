@@ -11,11 +11,12 @@ from aiohttp.test_utils import TestClient, TestServer
 from app.web.oauth_callback import routes
 
 
-async def _build_client(bot=None, auth_service=None) -> TestClient:
+async def _build_client(bot=None, auth_service=None, chat_context_service=None) -> TestClient:
     app = web.Application()
     app.add_routes(routes)
     app["bot"] = bot if bot is not None else AsyncMock()
     app["google_auth_service"] = auth_service
+    app["chat_context_service"] = chat_context_service
     server = TestServer(app)
     client = TestClient(server)
     await client.start_server()
@@ -143,3 +144,28 @@ async def test_health_endpoint() -> None:
 
     assert resp.status == 200
     assert data == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_callback_success_clears_chat_session_when_service_available(monkeypatch) -> None:
+    bot = AsyncMock()
+    auth = _auth_mock()
+    chat_context_service = AsyncMock()
+    clear_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.web.oauth_callback._clear_chat_session_by_telegram_id",
+        clear_mock,
+    )
+
+    client = await _build_client(
+        bot=bot,
+        auth_service=auth,
+        chat_context_service=chat_context_service,
+    )
+    try:
+        resp = await client.get("/oauth/google/callback?code=X&state=valid")
+    finally:
+        await client.close()
+
+    assert resp.status == 200
+    clear_mock.assert_awaited_once_with(chat_context_service, 123)

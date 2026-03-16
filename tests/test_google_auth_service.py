@@ -82,6 +82,7 @@ def test_generate_auth_url_contains_required_params() -> None:
     assert query["access_type"] == ["offline"]
     assert query["prompt"] == ["consent"]
     assert "https://www.googleapis.com/auth/calendar.events" in query["scope"][0]
+    assert "https://www.googleapis.com/auth/calendar.calendarlist.readonly" in query["scope"][0]
 
 
 def test_generate_auth_url_state_round_trip() -> None:

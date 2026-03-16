@@ -25,8 +25,28 @@ def _google_not_configured_text() -> str:
     return "Google OAuth не настроен администратором."
 
 
+async def _clear_chat_session_if_available(
+    chat_context_service,
+    user_id: int,
+) -> None:
+    """Reset free-chat session pointer after auth state changes."""
+    if chat_context_service is None:
+        return
+    try:
+        await chat_context_service.clear_session(user_id)
+    except Exception:
+        logger.exception(
+            "Failed to clear chat session after Google auth change for user_id=%d",
+            user_id,
+        )
+
+
 @router.message(Command("connect_google"))
-async def cmd_connect_google(message: Message, google_auth_service=None) -> None:
+async def cmd_connect_google(
+    message: Message,
+    google_auth_service=None,
+    chat_context_service=None,
+) -> None:
     if not message.from_user:
         return
     if google_auth_service is None:
@@ -38,6 +58,8 @@ async def cmd_connect_google(message: Message, google_auth_service=None) -> None
     if user is None:
         await message.answer("Сначала выполните /start для регистрации.")
         return
+
+    await _clear_chat_session_if_available(chat_context_service, user.id)
 
     if await google_auth_service.is_connected(user.id):
         email = await google_auth_service.get_connected_email(user.id)
@@ -58,7 +80,11 @@ async def cmd_connect_google(message: Message, google_auth_service=None) -> None
 
 
 @router.message(Command("disconnect_google"))
-async def cmd_disconnect_google(message: Message, google_auth_service=None) -> None:
+async def cmd_disconnect_google(
+    message: Message,
+    google_auth_service=None,
+    chat_context_service=None,
+) -> None:
     if not message.from_user:
         return
     if google_auth_service is None:
@@ -70,6 +96,8 @@ async def cmd_disconnect_google(message: Message, google_auth_service=None) -> N
     if user is None or not await google_auth_service.is_connected(user.id):
         await message.answer("Google-аккаунт не подключён.")
         return
+
+    await _clear_chat_session_if_available(chat_context_service, user.id)
 
     email = await google_auth_service.get_connected_email(user.id)
     email_text = f" ({email})" if email else ""
@@ -95,7 +123,11 @@ async def on_disconnect_click(callback: CallbackQuery, google_auth_service=None)
 
 
 @router.callback_query(F.data == "google_disconnect_confirm")
-async def on_disconnect_confirm(callback: CallbackQuery, google_auth_service=None) -> None:
+async def on_disconnect_confirm(
+    callback: CallbackQuery,
+    google_auth_service=None,
+    chat_context_service=None,
+) -> None:
     if not callback.from_user:
         await callback.answer()
         return
@@ -108,6 +140,7 @@ async def on_disconnect_confirm(callback: CallbackQuery, google_auth_service=Non
 
     if user is not None:
         await google_auth_service.revoke_and_delete(user.id)
+        await _clear_chat_session_if_available(chat_context_service, user.id)
 
     if callback.message:
         await callback.message.edit_text("🔓 Google-аккаунт отключён.")
@@ -122,7 +155,11 @@ async def on_disconnect_cancel(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "google_reconnect")
-async def on_reconnect(callback: CallbackQuery, google_auth_service=None) -> None:
+async def on_reconnect(
+    callback: CallbackQuery,
+    google_auth_service=None,
+    chat_context_service=None,
+) -> None:
     if not callback.from_user:
         await callback.answer()
         return
@@ -140,6 +177,7 @@ async def on_reconnect(callback: CallbackQuery, google_auth_service=None) -> Non
         return
 
     await google_auth_service.revoke_and_delete(user.id)
+    await _clear_chat_session_if_available(chat_context_service, user.id)
     auth_url = google_auth_service.generate_auth_url(callback.from_user.id)
 
     if callback.message:

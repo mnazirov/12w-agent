@@ -46,6 +46,22 @@ def _safe_json_loads(raw: bytes) -> Any:
         return {"raw": text}
 
 
+def _is_insufficient_scope_error(payload: Any) -> bool:
+    """Return True when Google API reports insufficient OAuth scopes."""
+    if not isinstance(payload, dict):
+        return False
+    error_obj = payload.get("error")
+    if isinstance(error_obj, dict):
+        errors = error_obj.get("errors")
+        if isinstance(errors, list):
+            for err in errors:
+                if isinstance(err, dict) and str(err.get("reason", "")).lower() == "insufficientpermissions":
+                    return True
+        message = str(error_obj.get("message", "")).lower()
+        return "insufficient permission" in message
+    return False
+
+
 def _call_google_api(
     *,
     method: str,
@@ -98,9 +114,14 @@ def _execute_google_api(
         body=body,
     )
 
-    if status in (401, 403):
+    if status == 401:
         return _auth_error(
             "Google token invalid or expired. Use /connect_google in Telegram."
+        )
+    if status == 403 and _is_insufficient_scope_error(payload):
+        return _auth_error(
+            "Недостаточно разрешений Google Calendar. Выполните /connect_google, "
+            "чтобы обновить доступ."
         )
     if status >= 400:
         return {

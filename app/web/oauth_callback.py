@@ -6,6 +6,9 @@ import logging
 
 from aiohttp import web
 
+from db import repos
+from db.base import get_session_factory
+
 logger = logging.getLogger(__name__)
 
 routes = web.RouteTableDef()
@@ -23,6 +26,18 @@ ERROR_HTML = """<!DOCTYPE html>
 <h1>❌ {title}</h1>
 <p>{message}</p>
 </body></html>"""
+
+
+async def _clear_chat_session_by_telegram_id(
+    chat_context_service,
+    telegram_id: int,
+) -> None:
+    """Clear free-chat session pointer after successful OAuth reconnect."""
+    async with get_session_factory()() as session:
+        user = await repos.get_user_by_telegram_id(session, telegram_id)
+
+    if user is not None:
+        await chat_context_service.clear_session(user.id)
 
 
 @routes.get("/oauth/google/callback")
@@ -124,6 +139,16 @@ async def google_oauth_callback(request: web.Request) -> web.Response:
             content_type="text/html",
             status=400,
         )
+
+    chat_context_service = request.app.get("chat_context_service")
+    if chat_context_service is not None:
+        try:
+            await _clear_chat_session_by_telegram_id(chat_context_service, telegram_id)
+        except Exception:
+            logger.exception(
+                "Failed to clear chat session after OAuth callback for telegram_id=%d",
+                telegram_id,
+            )
 
     email_text = f" ({email})" if email else ""
     try:
