@@ -60,6 +60,7 @@ async def on_text(
         await message.answer("Пока я понимаю только текстовые сообщения 📝")
         return
     if message.text and text.startswith("/"):
+        await message.answer("Неизвестная команда. Используй /start для списка команд.")
         return
 
     if chat_rate_limiter is not None and not chat_rate_limiter.check(message.from_user.id):
@@ -94,8 +95,12 @@ async def on_text(
             tool_server_names=["calendar"],
             user_id=user.id,
         )
-        if chat_context_service is not None and response_id:
-            await chat_context_service.save_response_id(user.id, response_id)
+        if chat_context_service is not None:
+            if response_id:
+                await chat_context_service.save_response_id(user.id, response_id)
+            elif previous_response_id is not None:
+                # Avoid continuing from stale branch if response id wasn't persisted.
+                await chat_context_service.clear_session(user.id)
 
         if reply:
             await send_long_message(message, reply)

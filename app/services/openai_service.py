@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Type, TypeVar
@@ -229,6 +230,85 @@ def _sanitize_auth_noise(text: str) -> str:
     return text
 
 
+_KNOWN_TRACE_TOOLS = {
+    "list_calendars",
+    "list_events",
+    "create_event",
+    "delete_event",
+}
+
+
+def _is_trace_tool_name(name: str) -> bool:
+    """Return True for known MCP tool names that may leak into output."""
+    if name in _KNOWN_TRACE_TOOLS:
+        return True
+    return any(name.endswith(f"_{tool}") for tool in _KNOWN_TRACE_TOOLS)
+
+
+def _strip_tool_trace_artifacts(text: str) -> str:
+    """Remove leaked tool-call trace fragments like /tool_name{...}."""
+    if not text:
+        return ""
+
+    out: list[str] = []
+    i = 0
+    removed_blocks = 0
+    length = len(text)
+
+    while i < length:
+        if text[i] == "/":
+            j = i + 1
+            if j < length and (text[j].isalpha() or text[j] == "_"):
+                while j < length and (text[j].isalnum() or text[j] == "_"):
+                    j += 1
+                tool_name = text[i + 1:j]
+                if j < length and text[j] == "{" and _is_trace_tool_name(tool_name):
+                    depth = 0
+                    k = j
+                    while k < length:
+                        ch = text[k]
+                        if ch == "{":
+                            depth += 1
+                        elif ch == "}":
+                            depth -= 1
+                            if depth == 0:
+                                k += 1
+                                break
+                        k += 1
+                    if depth == 0:
+                        removed_blocks += 1
+                        i = k
+                        # Trim delimiters around removed tool fragments.
+                        while i < length and text[i] in " \t\r\n|,;:/_-":
+                            i += 1
+                        continue
+
+        out.append(text[i])
+        i += 1
+
+    if removed_blocks == 0:
+        return text
+
+    cleaned = "".join(out)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+    # Heuristic for leaked glue text like "нахГотово" between stripped traces.
+    if removed_blocks >= 2:
+        start = re.search(r"[A-ZА-ЯЁ]", cleaned)
+        if start and start.start() > 0:
+            prefix = cleaned[:start.start()]
+            if (
+                len(prefix) <= 20
+                and not any(ch.isspace() for ch in prefix)
+                and not any(ch.isupper() for ch in prefix)
+                and not any(ch.isdigit() for ch in prefix)
+            ):
+                cleaned = cleaned[start.start():].lstrip()
+
+    return cleaned
+
+
 async def _create_response_with_optional_tools(
     *,
     model: str,
@@ -409,9 +489,16 @@ async def generate_chat(
     if isinstance(response, _ToolAuthRequiredInterrupt):
         return response.output_text, None
 
-    text = _sanitize_auth_noise((response.output_text or "").strip())
-    if text != (response.output_text or "").strip():
+    raw_text = (response.output_text or "").strip()
+
+    text = _sanitize_auth_noise(raw_text)
+    if text != raw_text:
         return text, None
+
+    text = _strip_tool_trace_artifacts(text)
+    if text != raw_text:
+        return text, None
+
     return text, _obj_get(response, "id")
 
 
