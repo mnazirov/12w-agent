@@ -73,6 +73,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ngrok:
+    image: ngrok/ngrok:3
+    profiles: ["ngrok"]
+    restart: unless-stopped
+    depends_on:
+      bot:
+        condition: service_started
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+    command:
+      - "/bin/sh"
+      - "-lc"
+      - |
+        if [ -z "$NGROK_AUTHTOKEN" ]; then
+          echo "NGROK_AUTHTOKEN is empty";
+          exit 1;
+        fi
+        if [ -n "$NGROK_DOMAIN" ]; then
+          exec ngrok http --authtoken "$NGROK_AUTHTOKEN" --domain "$NGROK_DOMAIN" bot:8080;
+        fi
+        exec ngrok http --authtoken "$NGROK_AUTHTOKEN" bot:8080;
+
 volumes:
   postgres_data:
   mcp-data:

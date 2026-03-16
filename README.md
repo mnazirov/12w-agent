@@ -164,9 +164,11 @@ MCP_SERVER_URL=http://mcp-server:8001/sse
 GOOGLE_CALENDAR_MCP_URL=http://google-calendar-mcp:8002/sse
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=https://your-domain.com/oauth/google/callback
+GOOGLE_REDIRECT_URI=https://<ngrok-domain>/oauth/google/callback
 GOOGLE_TOKENS_ENCRYPTION_KEY=
 OAUTH_CALLBACK_PORT=8080
+NGROK_AUTHTOKEN=
+NGROK_DOMAIN=<ngrok-domain>   # опционально: закреплённый домен
 OPENAI_MODEL=gpt-5.2
 TZ=Europe/Moscow
 ```
@@ -177,11 +179,18 @@ TZ=Europe/Moscow
 docker compose up -d --build
 ```
 
+Если используете OAuth через ngrok, запускайте профиль `ngrok`:
+
+```bash
+docker compose --profile ngrok up -d --build
+```
+
 Состав сервисов:
 - `postgres` (`postgres:16-alpine`)
 - `mcp-server` (из `Dockerfile.mcp`)
 - `google-calendar-mcp` (из `google_calendar_mcp/Dockerfile`)
 - `bot` (из `Dockerfile`)
+- `ngrok` (опционально, профиль `ngrok`, проксирует `bot:8080` наружу)
 
 ### 3. Проверьте состояние
 
@@ -276,6 +285,8 @@ python main.py
 | `GOOGLE_CREDENTIALS_PATH` | `/secrets/credentials.json` | сервис `google-calendar-mcp` |
 | `GOOGLE_TOKEN_PATH` | `/secrets/token.json` | сервис `google-calendar-mcp` |
 | `OAUTH_CALLBACK_PORT` | `8080` | сервис `bot` (порт callback endpoint) |
+| `NGROK_AUTHTOKEN` | `""` | сервис `ngrok` (обязателен при использовании профиля `ngrok`) |
+| `NGROK_DOMAIN` | `""` | сервис `ngrok` (опционально: закреплённый домен) |
 
 ## Команды разработки и эксплуатации
 
@@ -390,6 +401,16 @@ pytest tests/test_planning_service.py::TestDailyPlanResponse::test_valid_plan -v
 4. Сгенерируйте ключ Fernet:
    - `python -c "from app.services.crypto_service import TokenEncryptor; print(TokenEncryptor.generate_key())"`
 5. Заполните env-переменные OAuth в `.env`.
+
+### Запуск OAuth через ngrok (без домена)
+
+1. Укажите в `.env`:
+   - `NGROK_AUTHTOKEN=<ваш токен ngrok>`
+   - `NGROK_DOMAIN=<ваш закреплённый ngrok-домен>` (рекомендуется)
+   - `GOOGLE_REDIRECT_URI=https://<ngrok-domain>/oauth/google/callback`
+2. Запускайте стек с профилем:
+   - `docker compose --profile ngrok up -d --build`
+3. Убедитесь, что в Google Cloud Console в `Authorized redirect URIs` указан тот же URL.
 
 ## База данных
 
