@@ -1,4 +1,4 @@
-"""Entry point for the mock Google Calendar MCP server."""
+"""Entry point for Google Calendar MCP server."""
 
 from __future__ import annotations
 

@@ -80,7 +80,7 @@ graph TD
 - Данные бота хранятся в PostgreSQL (`db/models.py`, `db/repos.py`).
 - MCP вызовы идут через orchestration-слой (`app/services/mcp_orchestrator.py`) с auto-routing tools.
 - Подсистема мотивации и аналитики вынесена в отдельный MCP-сервер на SQLite (`mcp_server/server.py`).
-- Календарный MCP-сервис запускается отдельно (`google_calendar_mcp/`), на старте используется mock.
+- Календарный MCP-сервис запускается отдельно (`google_calendar_mcp/`) и работает через Google Calendar API.
 - Погодный MCP-сервис запускается отдельно (`weather_mcp/`) и обращается к Open-Meteo.
 - Планировщик APScheduler шлёт напоминания и запускает периодические задачи.
 
@@ -133,8 +133,8 @@ graph TD
 │   ├── server.py                  # MCP tools + SQLite schema + аналитика
 │   └── run.py                     # Запуск MCP сервера
 ├── google_calendar_mcp/
-│   ├── mock_server.py             # Mock calendar MCP tools
-│   ├── run.py                     # Запуск mock MCP сервера
+│   ├── mock_server.py             # Google Calendar MCP tools
+│   ├── run.py                     # Запуск calendar MCP сервера
 │   └── Dockerfile                 # Контейнер календарного сервиса
 ├── weather_mcp/
 │   ├── server.py                  # Weather MCP tools (Open-Meteo)

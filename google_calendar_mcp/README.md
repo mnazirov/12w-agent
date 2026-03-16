@@ -1,26 +1,17 @@
-# google-calendar-mcp (mock)
+# google-calendar-mcp
 
-В этой директории находится временный mock MCP-сервер календаря для локальной разработки.
+SSE MCP-сервис для реальной интеграции с Google Calendar API.
 
-## Что сейчас реализовано
+## Инструменты
 
-- `list_calendars` -> `[{"id": "primary", "summary": "My Calendar"}]`
-- `list_events(calendar_id, time_min, time_max)` -> `[]`
-- `create_event(summary, start, end)` -> `{"status": "created", "id": "mock-123"}`
-- `delete_event(event_id)` -> `{"status": "deleted"}`
+- `list_calendars(access_token)` -> `{"calendars": [...]}`
+- `list_events(calendar_id, time_min, time_max, access_token)` -> `{"events": [...]}`
+- `create_event(summary/title, start, end, calendar_id, ...)` -> `{"status":"created","id":"..."}`
+- `delete_event(event_id, calendar_id, access_token)` -> `{"status":"deleted"}`
 
-## Как заменить на реальный Google Calendar MCP
+`access_token` подставляется оркестратором из OAuth (`/connect_google`).
 
-1. Обновите `Dockerfile`:
-   - удалите копирование `mock_server.py`
-   - установите реальный пакет (через `pip install ...` или `npx ...`)
-2. Оставьте тот же SSE endpoint (`/sse`) и порт `8002`.
-3. Настройте переменные окружения в контейнере:
-   - `GOOGLE_CREDENTIALS_PATH=/secrets/credentials.json`
-   - `GOOGLE_TOKEN_PATH=/secrets/token.json`
-4. При необходимости подключите volume с секретами в `docker-compose.yml`.
-
-## Локальный запуск mock-сервера
+## Запуск локально
 
 ```bash
 pip install -r google_calendar_mcp/requirements.txt
