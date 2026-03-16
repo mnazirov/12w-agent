@@ -168,7 +168,7 @@ GOOGLE_REDIRECT_URI=https://<ngrok-domain>/oauth/google/callback
 GOOGLE_TOKENS_ENCRYPTION_KEY=
 OAUTH_CALLBACK_PORT=8080
 NGROK_AUTHTOKEN=
-NGROK_DOMAIN=<ngrok-domain>   # обязателен для OAuth через ngrok
+NGROK_DOMAIN=<ngrok-domain>   # обязателен для OAuth через ngrok (только host, без https:// и /)
 OPENAI_MODEL=gpt-5.2
 TZ=Europe/Moscow
 ```
@@ -406,7 +406,7 @@ pytest tests/test_planning_service.py::TestDailyPlanResponse::test_valid_plan -v
 
 1. Укажите в `.env`:
    - `NGROK_AUTHTOKEN=<ваш токен ngrok>`
-   - `NGROK_DOMAIN=<ваш закреплённый ngrok-домен>` (обязательно)
+   - `NGROK_DOMAIN=<ваш закреплённый ngrok-домен>` (обязательно, только host)
    - `GOOGLE_REDIRECT_URI=https://<ngrok-domain>/oauth/google/callback`
 2. Запускайте стек с профилем:
    - `docker compose --profile ngrok up -d --build`

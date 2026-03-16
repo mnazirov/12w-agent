@@ -87,8 +87,8 @@ services:
       - "http"
       - "--authtoken"
       - "${NGROK_AUTHTOKEN:?NGROK_AUTHTOKEN is required}"
-      - "--domain"
-      - "${NGROK_DOMAIN:?NGROK_DOMAIN is required for OAuth redirect}"
+      - "--url"
+      - "https://${NGROK_DOMAIN:?NGROK_DOMAIN is required for OAuth redirect}"
       - "bot:8080"
 
 volumes:
